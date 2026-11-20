@@ -23,7 +23,7 @@
     <div id="list"></div>
   </div>
 </main>
-<script src="config.js"></script><script src="app.js"></script>
+<script src="config.js"></script><script src="app.js"></script><script src="words.js"></script>
 <script>
 nav("index.html");
 async function load() {
@@ -35,8 +35,15 @@ async function load() {
 }
 $("#go").onclick = async () => {
   const ids = ["#p1", "#p2", "#p3", "#p4"];
-  const players = ids.map(s => $(s).value.trim()).filter(Boolean);
+  const raw = ids.map(s => $(s).value.trim());
+  const players = raw.filter(Boolean);
   const msg = $("#msg"), btn = $("#go");
+  const bad = raw.findIndex(v => v && containsBlockedWord(v));
+  if (bad >= 0) {
+    msg.className = "msg err";
+    msg.textContent = `Player ${bad + 1}'s name isn't allowed. Please use a school-appropriate name.`;
+    return;
+  }
   btn.disabled = true;
   try {
     await signup(players);
