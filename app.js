@@ -23,8 +23,8 @@ async function db(path, method = "GET", body, auth = false) {
   const res = await fetch(url, { method, body: body === undefined ? undefined : JSON.stringify(body) });
   if (!res.ok) {
     if (res.status === 401) {
-      sessionStorage.removeItem("token");
-      throw new Error("Not allowed. If you're an admin, log in again.");
+      if (auth) throw new Error("Permission denied. Either your login expired (log out and back in) or the admin email in the database rules doesn't match yours.");
+      throw new Error("Permission denied by the database rules.");
     }
     throw new Error("Request failed (" + res.status + "). Check config.js and the database rules.");
   }
@@ -52,7 +52,9 @@ async function adminLogin(email, password) {
     body: JSON.stringify({ email, password, returnSecureToken: true })
   });
   if (!res.ok) throw new Error("Wrong email or password.");
-  sessionStorage.setItem("token", (await res.json()).idToken);
+  const j = await res.json();
+  sessionStorage.setItem("token", j.idToken);
+  sessionStorage.setItem("uid", j.localId);
 }
 
 const removeEntry = id => db(`queue/${id}`, "DELETE", undefined, true);

@@ -1,7 +1,12 @@
 <!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Tournament Brackets</title><link rel="stylesheet" href="style.css">
+<title>Tournament Brackets</title>
+<link rel="stylesheet" href="style.css">
+<link rel="icon" type="image/svg+xml" href="images/favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32.png">
+<link rel="icon" href="images/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="images/apple-touch-icon.png">
 <style>
   main.wide{max-width:1100px}
   #frame{height:78vh}
@@ -12,39 +17,67 @@
 <main class="wide">
   <h1>Tournament Brackets</h1>
   <div class="tools">
-    <button id="refresh">Refresh bracket</button>
-    <a id="openFull" href="https://brackethq.com" target="_blank" rel="noopener"><button class="gray">Open full page</button></a>
     <a href="https://brackethq.com" target="_blank" rel="noopener"><button class="gray">Bracket HQ (create / manage)</button></a>
   </div>
   <p class="muted" id="note">Loading...</p>
-  <div class="card" id="embedCard" hidden>
-    <iframe id="frame" title="Tournament bracket" loading="lazy"></iframe>
-    <p class="muted">If the bracket doesn't appear, use "Open full page" above.</p>
+  <div class="tools" id="tabs"></div>
+  <div id="viewer" hidden>
+    <div class="tools">
+      <button id="refresh">Refresh bracket</button>
+      <a id="openFull" href="#" target="_blank" rel="noopener"><button class="gray">Open full page</button></a>
+    </div>
+    <div class="card">
+      <h2 id="title"></h2>
+      <iframe id="frame" title="Tournament bracket" loading="lazy"></iframe>
+      <p class="muted">If the bracket doesn't appear, use "Open full page" above.</p>
+    </div>
   </div>
 </main>
 <script src="config.js"></script><script src="app.js"></script>
 <script>
 nav("brackets.html");
+let list = [], current = null;
 
-// Turns https://brackethq.com/b/abc12 (or .../embed) into https://brackethq.com/b/abc12/embed/
+// https://brackethq.com/b/abc12 (or .../embed) -> https://brackethq.com/b/abc12/embed/
 function toEmbed(url) {
   const m = url.match(/brackethq\.com\/b\/([A-Za-z0-9_-]+)/i);
   return m ? `https://brackethq.com/b/${m[1]}/embed/` : url;
 }
 
+function renderTabs() {
+  const tabs = $("#tabs");
+  tabs.replaceChildren();
+  list.forEach(b => {
+    const btn = document.createElement("button");
+    btn.textContent = b.name;
+    btn.className = b.id === current.id ? "" : "gray";
+    btn.onclick = () => show(b.id);
+    tabs.appendChild(btn);
+  });
+}
+
+function show(id) {
+  current = list.find(b => b.id === id) || list[0];
+  history.replaceState(null, "", "#" + current.id);
+  const embed = toEmbed(current.url);
+  $("#title").textContent = current.name;
+  $("#frame").src = embed;
+  $("#openFull").href = embed.replace(/embed\/$/, "");
+  $("#refresh").onclick = () => { $("#frame").src = embed; };
+  $("#viewer").hidden = false;
+  renderTabs();
+}
+
 (async () => {
   try {
-    const url = await db("bracketUrl");
-    if (!url) {
-      $("#note").textContent = "No bracket has been set yet. An admin can paste a Bracket HQ link on the Admin page.";
+    const data = await db("brackets");
+    list = data ? Object.entries(data).map(([id, v]) => ({ id, ...v })).sort((a, b) => a.order - b.order) : [];
+    if (!list.length) {
+      $("#note").textContent = "No brackets have been added yet. An admin can add them on the Admin page.";
       return;
     }
-    const embed = toEmbed(url);
-    $("#frame").src = embed;
-    $("#embedCard").hidden = false;
-    $("#openFull").href = embed.replace(/embed\/$/, "");
     $("#note").textContent = "";
-    $("#refresh").onclick = () => { $("#frame").src = embed; };
+    show(decodeURIComponent(location.hash.slice(1)));
   } catch (e) { $("#note").textContent = e.message; }
 })();
 </script></body></html>

@@ -1,7 +1,12 @@
 <!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Admin</title><link rel="stylesheet" href="style.css">
+<title>Admin</title>
+<link rel="stylesheet" href="style.css">
+<link rel="icon" type="image/svg+xml" href="images/favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32.png">
+<link rel="icon" href="images/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="images/apple-touch-icon.png">
 </head><body>
 <main>
   <h1>Admin</h1>
@@ -20,23 +25,47 @@
       <button class="bad" id="clear" style="margin-top:12px">Clear entire line</button>
     </div>
     <div class="card">
-      <h2>Bracket HQ link</h2>
-      <p class="muted">Create the bracket on brackethq.com, then paste its link here so it shows on the Brackets page.</p>
-      <input id="bracketUrl" placeholder="https://brackethq.com/...">
-      <button id="saveBracket">Save link</button>
+      <h2>Brackets</h2>
+      <p class="muted">Create each bracket on brackethq.com, then add its link here. They show as tabs on the Brackets page.</p>
+      <div id="blist"></div>
+      <input id="bName" placeholder="Bracket name (e.g. Mario Kart Friday)" maxlength="60">
+      <input id="bUrl" placeholder="https://brackethq.com/b/...">
+      <button id="addBracket">Add bracket</button>
       <div id="bMsg" class="msg"></div>
+    </div>
+    <div class="card">
+      <h2>Admins</h2>
+      <p class="muted">Everyone listed here can manage the line, brackets, and admins.</p>
+      <div id="alist"></div>
+      <h3 style="margin:16px 0 4px">Add a new admin</h3>
+      <p class="muted" style="margin:0 0 6px">Creates a login for them. Give them the email and password you pick.</p>
+      <input id="aEmail" type="email" placeholder="Their email" autocomplete="off">
+      <input id="aPw" type="text" placeholder="Temporary password (6+ characters)" autocomplete="off">
+      <button id="addAdmin">Create admin</button>
+      <h3 style="margin:16px 0 4px">Or add someone who already has a login</h3>
+      <input id="aUid" placeholder="Their User UID (from Firebase Authentication)" autocomplete="off">
+      <input id="aLabel" placeholder="Label (their name or email)" maxlength="100" autocomplete="off">
+      <button id="addUid" class="gray">Add by UID</button>
+      <div id="aMsg" class="msg"></div>
     </div>
   </div>
 </main>
 <script src="config.js"></script><script src="app.js"></script>
 <script>
 nav("admin.html");
-let queue = [], timer;
+let queue = [], brackets = [], timer;
 const qmsg = t => $("#qmsg").textContent = t || "";
+function bmsg(t, ok) { const m = $("#bMsg"); m.className = "msg " + (ok ? "ok" : "err"); m.textContent = t || ""; }
+
 async function guard(fn) {
   try { qmsg(); await fn(); await load(); }
   catch (e) { qmsg(e.message); if (!sessionStorage.getItem("token")) showLogin(); }
 }
+async function bguard(fn) {
+  try { bmsg(); await fn(); await loadBrackets(); }
+  catch (e) { bmsg(e.message); if (!sessionStorage.getItem("token")) showLogin(); }
+}
+
 async function load() {
   queue = await getQueue();
   renderQueue($("#list"), queue, {
@@ -45,10 +74,93 @@ async function load() {
     done: e => guard(() => removeEntry(e.id))
   });
 }
+
+// ---- Brackets ----
+async function loadBrackets() {
+  const d = await db("brackets");
+  brackets = d ? Object.entries(d).map(([id, v]) => ({ id, ...v })).sort((a, b) => a.order - b.order) : [];
+  const el = $("#blist"); el.replaceChildren();
+  if (!brackets.length) { const p = document.createElement("p"); p.className = "muted"; p.textContent = "No brackets yet."; el.appendChild(p); return; }
+  brackets.forEach((b, i) => {
+    const row = document.createElement("div"); row.className = "entry";
+    const info = document.createElement("div"); info.className = "players"; info.style.flexDirection = "column";
+    const n = document.createElement("strong"); n.textContent = b.name;
+    const u = document.createElement("span"); u.className = "muted"; u.style.wordBreak = "break-all"; u.textContent = b.url;
+    info.append(n, u);
+    const act = document.createElement("div"); act.className = "actions";
+    const mk = (label, cls, fn) => { const x = document.createElement("button"); x.className = "small " + cls; x.textContent = label; x.onclick = fn; act.appendChild(x); };
+    mk("↑", "gray", () => i > 0 && bguard(() => swapBrackets(b, brackets[i - 1])));
+    mk("↓", "gray", () => i < brackets.length - 1 && bguard(() => swapBrackets(b, brackets[i + 1])));
+    mk("Remove", "bad", () => confirm("Remove \"" + b.name + "\"?") && bguard(() => db(`brackets/${b.id}`, "DELETE", undefined, true)));
+    row.append(info, act); el.appendChild(row);
+  });
+}
+const swapBrackets = (a, b) => db("brackets", "PATCH", { [`${a.id}/order`]: b.order, [`${b.id}/order`]: a.order }, true);
+
+$("#addBracket").onclick = () => bguard(async () => {
+  const name = $("#bName").value.trim(), url = $("#bUrl").value.trim();
+  if (!name) throw new Error("Enter a bracket name.");
+  if (!/^https?:\/\//.test(url)) throw new Error("Enter a full link starting with https://");
+  await db("brackets", "POST", { name, url, order: Date.now() }, true);
+  $("#bName").value = ""; $("#bUrl").value = "";
+  bmsg("Added.", true);
+});
+
+// ---- Admins ----
+function amsg(t, ok) { const m = $("#aMsg"); m.className = "msg " + (ok ? "ok" : "err"); m.textContent = t || ""; }
+async function aguard(fn) {
+  try { amsg(); await fn(); await loadAdmins(); }
+  catch (e) { amsg(e.message); if (!sessionStorage.getItem("token")) showLogin(); }
+}
+async function loadAdmins() {
+  const d = await db("admins", "GET", undefined, true);
+  const me = sessionStorage.getItem("uid");
+  const el = $("#alist"); el.replaceChildren();
+  Object.entries(d || {}).forEach(([uid, label]) => {
+    const row = document.createElement("div"); row.className = "entry";
+    const info = document.createElement("div"); info.className = "players"; info.style.flexDirection = "column";
+    const n = document.createElement("strong"); n.textContent = label + (uid === me ? " (you)" : "");
+    const u = document.createElement("span"); u.className = "muted"; u.style.wordBreak = "break-all"; u.textContent = uid;
+    info.append(n, u); row.appendChild(info);
+    if (uid !== me) {
+      const b = document.createElement("button"); b.className = "small bad"; b.textContent = "Remove";
+      b.onclick = () => confirm("Remove " + label + " as an admin?") && aguard(() => db(`admins/${uid}`, "DELETE", undefined, true));
+      row.appendChild(b);
+    }
+    el.appendChild(row);
+  });
+}
+$("#addAdmin").onclick = () => aguard(async () => {
+  const email = $("#aEmail").value.trim().toLowerCase(), password = $("#aPw").value;
+  if (!email || password.length < 6) throw new Error("Enter an email and a password of at least 6 characters.");
+  const r = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${CONFIG.apiKey}`, {
+    method: "POST", body: JSON.stringify({ email, password, returnSecureToken: false })
+  });
+  const j = await r.json();
+  if (!r.ok) {
+    const code = (j.error && j.error.message) || "";
+    if (code.startsWith("EMAIL_EXISTS")) throw new Error("That email already has a login. Use \"Add by UID\" below instead.");
+    if (code.startsWith("WEAK_PASSWORD")) throw new Error("Password must be at least 6 characters.");
+    if (code.startsWith("INVALID_EMAIL")) throw new Error("That email address isn't valid.");
+    throw new Error("Couldn't create the login (" + code + ").");
+  }
+  await db(`admins/${j.localId}`, "PUT", email, true);
+  $("#aEmail").value = ""; $("#aPw").value = "";
+  amsg("Admin created. They can log in now.", true);
+});
+$("#addUid").onclick = () => aguard(async () => {
+  const uid = $("#aUid").value.trim(), label = $("#aLabel").value.trim() || "Admin";
+  if (!/^[A-Za-z0-9]{20,}$/.test(uid)) throw new Error("That doesn't look like a User UID.");
+  await db(`admins/${uid}`, "PUT", label, true);
+  $("#aUid").value = ""; $("#aLabel").value = "";
+  amsg("Admin added.", true);
+});
+
 function showLogin() { clearInterval(timer); $("#login").hidden = false; $("#panel").hidden = true; }
 async function showPanel() {
   $("#login").hidden = true; $("#panel").hidden = false;
-  const b = await db("bracketUrl"); $("#bracketUrl").value = b || "";
+  loadBrackets().catch(e => bmsg(e.message));
+  loadAdmins().catch(e => amsg(e.message));
   load(); clearInterval(timer); timer = setInterval(() => load().catch(() => {}), 5000);
 }
 $("#loginBtn").onclick = async () => {
@@ -56,18 +168,10 @@ $("#loginBtn").onclick = async () => {
   catch (e) { $("#loginMsg").textContent = e.message; }
 };
 $("#logout").onclick = () => {
-  sessionStorage.removeItem("token");
-  $("#pw").value = ""; $("#loginMsg").textContent = ""; qmsg();
+  sessionStorage.removeItem("token"); sessionStorage.removeItem("uid");
+  $("#pw").value = ""; $("#loginMsg").textContent = ""; qmsg(); bmsg();
   showLogin();
 };
 $("#clear").onclick = () => confirm("Remove everyone from the line?") && guard(clearQueue);
-$("#saveBracket").onclick = async () => {
-  const m = $("#bMsg"), v = $("#bracketUrl").value.trim();
-  try {
-    if (v && !/^https?:\/\//.test(v)) throw new Error("Enter a full URL starting with https://");
-    await db("bracketUrl", "PUT", v || null, true);
-    m.className = "msg ok"; m.textContent = "Saved.";
-  } catch (e) { m.className = "msg err"; m.textContent = e.message; }
-};
 if (sessionStorage.getItem("token")) showPanel();
 </script></body></html>
