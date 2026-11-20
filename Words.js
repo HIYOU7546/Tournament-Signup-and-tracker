@@ -43,7 +43,7 @@ const _WHOLE = BLOCK_WHOLE.map(w => _pattern(w, true));
 
 function _tokens(text) {
   let s = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  s = s.replace(/(?<=[a-z])!(?=[a-z])/g, "i");           // sh!t
+  s = s.replace(/([a-z])!(?=[a-z])/g, "$1i");           // sh!t (no lookbehind: works on older browsers)
   s = s.replace(/0/g, "o").replace(/1/g, "i").replace(/3/g, "e")
        .replace(/4/g, "a").replace(/5/g, "s").replace(/7/g, "t")
        .replace(/@/g, "a").replace(/\$/g, "s");
