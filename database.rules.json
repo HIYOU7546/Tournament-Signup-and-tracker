@@ -1,0 +1,21 @@
+{
+  "rules": {
+    "queue": {
+      ".read": true,
+      ".write": "auth != null && auth.token.email == 'YOUR_ADMIN_EMAIL'",
+      "$id": {
+        ".write": "!data.exists() && newData.exists()",
+        ".validate": "newData.hasChildren(['players','order','signedUpAt']) && newData.child('order').isNumber() && newData.child('signedUpAt').isNumber() && newData.child('players/0').isString() && newData.child('players/0').val().length > 0 && newData.child('players/0').val().length <= 30 && (!newData.child('players/1').exists() || (newData.child('players/1').isString() && newData.child('players/1').val().length <= 30)) && (!newData.child('players/2').exists() || (newData.child('players/2').isString() && newData.child('players/2').val().length <= 30)) && (!newData.child('players/3').exists() || (newData.child('players/3').isString() && newData.child('players/3').val().length <= 30)) && !newData.child('players/4').exists()",
+        "players": { ".validate": true },
+        "order": { ".validate": true },
+        "signedUpAt": { ".validate": true },
+        "$other": { ".validate": false }
+      }
+    },
+    "bracketUrl": {
+      ".read": true,
+      ".write": "auth != null && auth.token.email == 'YOUR_ADMIN_EMAIL'",
+      ".validate": "newData.isString() && newData.val().length < 300"
+    }
+  }
+}

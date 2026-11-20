@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin</title><link rel="stylesheet" href="style.css">
+</head><body>
+<main>
+  <h1>Admin</h1>
+  <div class="card" id="login">
+    <input id="email" type="email" placeholder="Admin email" autocomplete="username">
+    <input id="pw" type="password" placeholder="Password" autocomplete="current-password">
+    <button id="loginBtn">Log in</button>
+    <div id="loginMsg" class="msg err"></div>
+  </div>
+  <div id="panel" hidden>
+    <div style="text-align:right"><button class="gray small" id="logout">Log out</button></div>
+    <div class="card">
+      <h2>Line</h2>
+      <div id="list"></div>
+      <div id="qmsg" class="msg err"></div>
+      <button class="bad" id="clear" style="margin-top:12px">Clear entire line</button>
+    </div>
+    <div class="card">
+      <h2>Bracket HQ link</h2>
+      <p class="muted">Create the bracket on brackethq.com, then paste its link here so it shows on the Brackets page.</p>
+      <input id="bracketUrl" placeholder="https://brackethq.com/...">
+      <button id="saveBracket">Save link</button>
+      <div id="bMsg" class="msg"></div>
+    </div>
+  </div>
+</main>
+<script src="config.js"></script><script src="app.js"></script>
+<script>
+nav("admin.html");
+let queue = [], timer;
+const qmsg = t => $("#qmsg").textContent = t || "";
+async function guard(fn) {
+  try { qmsg(); await fn(); await load(); }
+  catch (e) { qmsg(e.message); if (!sessionStorage.getItem("token")) showLogin(); }
+}
+async function load() {
+  queue = await getQueue();
+  renderQueue($("#list"), queue, {
+    up: (e, i) => i > 0 && guard(() => swapOrder(e, queue[i - 1])),
+    down: (e, i) => i < queue.length - 1 && guard(() => swapOrder(e, queue[i + 1])),
+    done: e => guard(() => removeEntry(e.id))
+  });
+}
+function showLogin() { clearInterval(timer); $("#login").hidden = false; $("#panel").hidden = true; }
+async function showPanel() {
+  $("#login").hidden = true; $("#panel").hidden = false;
+  const b = await db("bracketUrl"); $("#bracketUrl").value = b || "";
+  load(); clearInterval(timer); timer = setInterval(() => load().catch(() => {}), 5000);
+}
+$("#loginBtn").onclick = async () => {
+  try { await adminLogin($("#email").value.trim(), $("#pw").value); $("#loginMsg").textContent = ""; await showPanel(); }
+  catch (e) { $("#loginMsg").textContent = e.message; }
+};
+$("#logout").onclick = () => {
+  sessionStorage.removeItem("token");
+  $("#pw").value = ""; $("#loginMsg").textContent = ""; qmsg();
+  showLogin();
+};
+$("#clear").onclick = () => confirm("Remove everyone from the line?") && guard(clearQueue);
+$("#saveBracket").onclick = async () => {
+  const m = $("#bMsg"), v = $("#bracketUrl").value.trim();
+  try {
+    if (v && !/^https?:\/\//.test(v)) throw new Error("Enter a full URL starting with https://");
+    await db("bracketUrl", "PUT", v || null, true);
+    m.className = "msg ok"; m.textContent = "Saved.";
+  } catch (e) { m.className = "msg err"; m.textContent = e.message; }
+};
+if (sessionStorage.getItem("token")) showPanel();
+</script></body></html>

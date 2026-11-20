@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open Play Sign Up</title><link rel="stylesheet" href="style.css">
+</head><body>
+<main>
+  <h1>Open Play Sign Up</h1>
+  <p class="muted">Add up to 4 players. You'll be placed at the end of the line.</p>
+  <div class="card">
+    <input id="p1" placeholder="Player 1 (required)" maxlength="30" autocomplete="off">
+    <input id="p2" placeholder="Player 2 (optional)" maxlength="30" autocomplete="off">
+    <input id="p3" placeholder="Player 3 (optional)" maxlength="30" autocomplete="off">
+    <input id="p4" placeholder="Player 4 (optional)" maxlength="30" autocomplete="off">
+    <button id="go">Join the line</button>
+    <div id="msg" class="msg"></div>
+  </div>
+  <div class="card">
+    <h2>The Line <span class="muted" id="count"></span></h2>
+    <div id="list"></div>
+  </div>
+</main>
+<script src="config.js"></script><script src="app.js"></script>
+<script>
+nav("index.html");
+async function load() {
+  try {
+    const q = await getQueue();
+    $("#count").textContent = `(${q.length} group${q.length === 1 ? "" : "s"})`;
+    renderQueue($("#list"), q);
+  } catch (e) { $("#list").textContent = e.message; }
+}
+$("#go").onclick = async () => {
+  const ids = ["#p1", "#p2", "#p3", "#p4"];
+  const players = ids.map(s => $(s).value.trim()).filter(Boolean);
+  const msg = $("#msg"), btn = $("#go");
+  btn.disabled = true;
+  try {
+    await signup(players);
+    msg.className = "msg ok"; msg.textContent = "You're in line!";
+    ids.forEach(s => $(s).value = "");
+    load();
+  } catch (err) { msg.className = "msg err"; msg.textContent = err.message; }
+  btn.disabled = false;
+};
+load(); setInterval(load, 5000);
+</script></body></html>

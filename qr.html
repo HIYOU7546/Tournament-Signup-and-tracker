@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign Up QR Code</title><link rel="stylesheet" href="style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head><body>
+<main class="qr">
+  <h1>Scan to sign up</h1>
+  <div id="qr"></div>
+  <p class="big" id="url"></p>
+  <p class="muted">This points to the sign-up page at this site's address, so it never needs regenerating.</p>
+</main>
+<script src="config.js"></script><script src="app.js"></script>
+<script>
+nav("qr.html");
+const url = new URL("index.html", location.href).href;
+$("#url").textContent = url;
+new QRCode($("#qr"), { text: url, width: 320, height: 320, correctLevel: QRCode.CorrectLevel.M });
+</script></body></html>

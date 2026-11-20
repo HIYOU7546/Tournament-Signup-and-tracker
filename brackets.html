@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tournament Brackets</title><link rel="stylesheet" href="style.css">
+<style>
+  main.wide{max-width:1100px}
+  #frame{height:78vh}
+  .tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .tools a{text-decoration:none}
+</style>
+</head><body>
+<main class="wide">
+  <h1>Tournament Brackets</h1>
+  <div class="tools">
+    <button id="refresh">Refresh bracket</button>
+    <a id="openFull" href="https://brackethq.com" target="_blank" rel="noopener"><button class="gray">Open full page</button></a>
+    <a href="https://brackethq.com" target="_blank" rel="noopener"><button class="gray">Bracket HQ (create / manage)</button></a>
+  </div>
+  <p class="muted" id="note">Loading...</p>
+  <div class="card" id="embedCard" hidden>
+    <iframe id="frame" title="Tournament bracket" loading="lazy"></iframe>
+    <p class="muted">If the bracket doesn't appear, use "Open full page" above.</p>
+  </div>
+</main>
+<script src="config.js"></script><script src="app.js"></script>
+<script>
+nav("brackets.html");
+
+// Turns https://brackethq.com/b/abc12 (or .../embed) into https://brackethq.com/b/abc12/embed/
+function toEmbed(url) {
+  const m = url.match(/brackethq\.com\/b\/([A-Za-z0-9_-]+)/i);
+  return m ? `https://brackethq.com/b/${m[1]}/embed/` : url;
+}
+
+(async () => {
+  try {
+    const url = await db("bracketUrl");
+    if (!url) {
+      $("#note").textContent = "No bracket has been set yet. An admin can paste a Bracket HQ link on the Admin page.";
+      return;
+    }
+    const embed = toEmbed(url);
+    $("#frame").src = embed;
+    $("#embedCard").hidden = false;
+    $("#openFull").href = embed.replace(/embed\/$/, "");
+    $("#note").textContent = "";
+    $("#refresh").onclick = () => { $("#frame").src = embed; };
+  } catch (e) { $("#note").textContent = e.message; }
+})();
+</script></body></html>
