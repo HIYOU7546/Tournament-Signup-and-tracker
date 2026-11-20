@@ -7,10 +7,17 @@
 <link rel="icon" href="images/favicon.ico" sizes="any">
 <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
 </head><body>
-<main>
+<main id="mainWrap" style="visibility:hidden">
   <h1>Open Play Sign Up</h1>
   <p class="muted">Add up to 4 players. You'll be placed at the end of the line.</p>
-  <div class="card">
+  <div class="card" id="loginCard" hidden>
+    <h2>Sign in to join the line</h2>
+    <p class="muted">Use your @hamiltonschools.us Google account.</p>
+    <div id="gbtn"></div>
+    <div id="gmsg" class="msg err"></div>
+  </div>
+  <div class="card" id="formCard">
+    <p class="muted" id="who" hidden style="margin-top:0">Signed in as <strong id="whoEmail"></strong> · <a href="#" id="signout" style="color:var(--brand)">Sign out</a></p>
     <input id="p1" placeholder="Player 1 (required)" maxlength="30" autocomplete="off">
     <input id="p2" placeholder="Player 2 (optional)" maxlength="30" autocomplete="off">
     <input id="p3" placeholder="Player 3 (optional)" maxlength="30" autocomplete="off">
@@ -24,15 +31,63 @@
   </div>
 </main>
 <script src="config.js"></script><script src="app.js"></script><script src="words.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
+// Safety net: never leave the page blank if something below fails.
+setTimeout(() => { const m = document.getElementById("mainWrap"); if (m) m.style.visibility = ""; }, 4000);
 nav("index.html");
 async function load() {
   try {
     const q = await getQueue();
-    $("#count").textContent = `(${q.length} group${q.length === 1 ? "" : "s"})`;
+    const n = q.filter(e => !e.hidden).length;
+    $("#count").textContent = `(${n} group${n === 1 ? "" : "s"})`;
     renderQueue($("#list"), q);
   } catch (e) { $("#list").textContent = e.message; }
 }
+// ---- Sign-in gate (admins can switch this on/off) ----
+let requireLogin = false, googleStarted = false;
+
+function startGoogle(tries = 0) {
+  if (googleStarted) return;
+  if (!CONFIG.googleClientId) { $("#gmsg").textContent = "Google sign-in isn't set up yet. Please ask an admin."; return; }
+  if (!(window.google && google.accounts && google.accounts.id)) {
+    if (tries < 40) setTimeout(() => startGoogle(tries + 1), 250);
+    else $("#gmsg").textContent = "Couldn't load Google sign-in. Check your connection and refresh.";
+    return;
+  }
+  googleStarted = true;
+  google.accounts.id.initialize({
+    client_id: CONFIG.googleClientId,
+    callback: async resp => {
+      try { await googleSignIn(resp.credential); $("#gmsg").textContent = ""; await refreshGate(); }
+      catch (e) { $("#gmsg").textContent = e.message; }
+    }
+  });
+  google.accounts.id.renderButton($("#gbtn"), { theme: "filled_black", size: "large", text: "signin_with" });
+}
+
+async function refreshGate() {
+  let st = {};
+  try { st = (await db("settings")) || {}; } catch {}
+  // Tournament mode: sign-up is closed, send everyone to the brackets.
+  if (st.tournamentMode === true) { location.replace("brackets.html"); return; }
+  requireLogin = st.requireLogin === true;
+  const sess = playerSession();
+  const needLogin = requireLogin && !sess;
+  $("#loginCard").hidden = !needLogin;
+  $("#formCard").hidden = needLogin;
+  $("#who").hidden = !(requireLogin && sess);
+  if (sess) $("#whoEmail").textContent = sess.email;
+  $("#mainWrap").style.visibility = "";
+  if (needLogin) startGoogle();
+}
+$("#signout").onclick = e => {
+  e.preventDefault();
+  playerLogout();
+  if (window.google && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect();
+  refreshGate();
+};
+
 $("#go").onclick = async () => {
   const ids = ["#p1", "#p2", "#p3", "#p4"];
   const raw = ids.map(s => $(s).value.trim());
@@ -48,14 +103,20 @@ $("#go").onclick = async () => {
     msg.textContent = `Player ${bad + 1}'s name isn't allowed. Please use a school-appropriate name.`;
     return;
   }
+  const useLogin = requireLogin;
+  if (useLogin && !playerSession()) { await refreshGate(); return; }
   btn.disabled = true;
   try {
-    await signup(players);
+    await signup(players, useLogin);
     msg.className = "msg ok"; msg.textContent = "You're in line!";
     ids.forEach(s => $(s).value = "");
     load();
-  } catch (err) { msg.className = "msg err"; msg.textContent = err.message; }
+  } catch (err) {
+    msg.className = "msg err"; msg.textContent = err.message;
+    if (useLogin && !playerSession()) refreshGate();
+  }
   btn.disabled = false;
 };
+refreshGate(); setInterval(refreshGate, 20000);
 load(); setInterval(load, 5000);
 </script></body></html>

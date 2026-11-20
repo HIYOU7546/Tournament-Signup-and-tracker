@@ -16,6 +16,7 @@
 </head><body>
 <main class="wide">
   <h1>Tournament Brackets</h1>
+  <div class="card" id="tBanner" hidden><strong>Tournament in progress.</strong> Open play sign-ups are paused.</div>
   <div class="tools">
     <a href="https://brackethq.com" target="_blank" rel="noopener"><button class="gray">Bracket HQ (create / manage)</button></a>
   </div>
@@ -36,6 +37,7 @@
 <script src="config.js"></script><script src="app.js"></script>
 <script>
 nav("brackets.html");
+db("settings/tournamentMode").then(v => { if (v === true) $("#tBanner").hidden = false; }).catch(() => {});
 let list = [], current = null;
 
 // https://brackethq.com/b/abc12 (or .../embed) -> https://brackethq.com/b/abc12/embed/

@@ -19,10 +19,31 @@
   <div id="panel" hidden>
     <div style="text-align:right"><button class="gray small" id="logout">Log out</button></div>
     <div class="card">
+      <h2>Tournament mode</h2>
+      <label style="display:flex;gap:10px;align-items:center;cursor:pointer">
+        <input type="checkbox" id="tourney" style="width:auto;margin:0">
+        <span>A tournament is happening: hide sign-up, send everyone to the Brackets page, and block new sign-ups</span>
+      </label>
+      <div id="tMsg" class="msg"></div>
+    </div>
+    <div class="card">
+      <h2>Player sign-in</h2>
+      <label style="display:flex;gap:10px;align-items:center;cursor:pointer">
+        <input type="checkbox" id="reqLogin" style="width:auto;margin:0">
+        <span>Require a Google sign-in with an @hamiltonschools.us account to join the line</span>
+      </label>
+      <div id="sMsg" class="msg"></div>
+    </div>
+    <div class="card">
       <h2>Line</h2>
       <div id="list"></div>
       <div id="qmsg" class="msg err"></div>
       <button class="bad" id="clear" style="margin-top:12px">Clear entire line</button>
+    </div>
+    <div class="card">
+      <h2>Hidden for follow-up</h2>
+      <p class="muted">Hidden from the public line but kept here with who signed up, so you can follow up. Clearing the line does not remove these. Click Delete when you're finished.</p>
+      <div id="hlist"></div>
     </div>
     <div class="card">
       <h2>Brackets</h2>
@@ -53,7 +74,7 @@
 <script src="config.js"></script><script src="app.js"></script>
 <script>
 nav("admin.html");
-let queue = [], brackets = [], timer;
+let queue = [], who = {}, brackets = [], timer;
 const qmsg = t => $("#qmsg").textContent = t || "";
 function bmsg(t, ok) { const m = $("#bMsg"); m.className = "msg " + (ok ? "ok" : "err"); m.textContent = t || ""; }
 
@@ -68,10 +89,35 @@ async function bguard(fn) {
 
 async function load() {
   queue = await getQueue();
-  renderQueue($("#list"), queue, {
-    up: (e, i) => i > 0 && guard(() => swapOrder(e, queue[i - 1])),
-    down: (e, i) => i < queue.length - 1 && guard(() => swapOrder(e, queue[i + 1])),
+  try { who = (await db("signups", "GET", undefined, true)) || {}; } catch { who = {}; }
+  const visible = queue.filter(e => !e.hidden);
+  renderQueue($("#list"), visible, {
+    up: (e, i) => i > 0 && guard(() => swapOrder(e, visible[i - 1])),
+    down: (e, i) => i < visible.length - 1 && guard(() => swapOrder(e, visible[i + 1])),
+    hide: e => guard(() => db(`queue/${e.id}/hidden`, "PUT", true, true)),
     done: e => guard(() => removeEntry(e.id))
+  }, who);
+  renderHidden(queue.filter(e => e.hidden));
+}
+
+function renderHidden(list) {
+  const el = $("#hlist"); el.replaceChildren();
+  if (!list.length) { const p = document.createElement("p"); p.className = "muted"; p.textContent = "Nothing hidden."; el.appendChild(p); return; }
+  list.forEach(e => {
+    const row = document.createElement("div"); row.className = "entry";
+    const mid = document.createElement("div"); mid.style.flex = "1";
+    const pl = document.createElement("div"); pl.className = "players";
+    e.players.forEach(n => { const c = document.createElement("span"); c.className = "chip"; c.textContent = n; pl.appendChild(c); });
+    const w = document.createElement("div"); w.className = "time"; w.style.marginTop = "4px";
+    const sg = who[e.id];
+    w.textContent = (sg && sg.email ? "Signed up by " + sg.email : "Signed up without a login (no account on record)") +
+      " · " + new Date(e.signedUpAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    mid.append(pl, w);
+    const act = document.createElement("div"); act.className = "actions"; act.style.flexWrap = "wrap"; act.style.justifyContent = "flex-end";
+    const mk = (label, cls, fn) => { const b = document.createElement("button"); b.className = "small " + cls; b.textContent = label; b.onclick = fn; act.appendChild(b); };
+    mk("Unhide", "gray", () => guard(() => db(`queue/${e.id}/hidden`, "DELETE", undefined, true)));
+    mk("Delete", "bad", () => confirm("Permanently delete this entry and its record of who signed up?") && guard(() => removeEntry(e.id)));
+    row.append(mid, act); el.appendChild(row);
   });
 }
 
@@ -156,9 +202,39 @@ $("#addUid").onclick = () => aguard(async () => {
   amsg("Admin added.", true);
 });
 
+// ---- Player sign-in toggle ----
+async function loadSettings() {
+  const st = (await db("settings")) || {};
+  $("#reqLogin").checked = st.requireLogin === true;
+  $("#tourney").checked = st.tournamentMode === true;
+}
+$("#tourney").onchange = async e => {
+  const box = e.target, m = $("#tMsg");
+  try {
+    await db("settings/tournamentMode", "PUT", box.checked, true);
+    m.className = "msg ok";
+    m.textContent = box.checked ? "Tournament mode is ON. Sign-up is hidden and paused." : "Tournament mode is off. Sign-up is open again.";
+  } catch (err) {
+    box.checked = !box.checked;
+    m.className = "msg err"; m.textContent = err.message;
+  }
+};
+$("#reqLogin").onchange = async e => {
+  const box = e.target, m = $("#sMsg");
+  try {
+    await db("settings/requireLogin", "PUT", box.checked, true);
+    m.className = "msg ok";
+    m.textContent = box.checked ? "Sign-in is now required to join the line." : "Anyone can join the line without signing in.";
+  } catch (err) {
+    box.checked = !box.checked;
+    m.className = "msg err"; m.textContent = err.message;
+  }
+};
+
 function showLogin() { clearInterval(timer); $("#login").hidden = false; $("#panel").hidden = true; }
 async function showPanel() {
   $("#login").hidden = true; $("#panel").hidden = false;
+  loadSettings().catch(e => { $("#sMsg").className = "msg err"; $("#sMsg").textContent = e.message; });
   loadBrackets().catch(e => bmsg(e.message));
   loadAdmins().catch(e => amsg(e.message));
   load(); clearInterval(timer); timer = setInterval(() => load().catch(() => {}), 5000);
@@ -172,6 +248,6 @@ $("#logout").onclick = () => {
   $("#pw").value = ""; $("#loginMsg").textContent = ""; qmsg(); bmsg();
   showLogin();
 };
-$("#clear").onclick = () => confirm("Remove everyone from the line?") && guard(clearQueue);
+$("#clear").onclick = () => confirm("Remove everyone from the line? Hidden entries are kept.") && guard(() => clearQueue(queue.filter(e => !e.hidden).map(e => e.id)));
 if (sessionStorage.getItem("token")) showPanel();
 </script></body></html>
