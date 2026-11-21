@@ -3,12 +3,12 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tournament Brackets</title>
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="bracket.css">
 <link rel="icon" type="image/svg+xml" href="images/favicon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32.png">
 <link rel="icon" href="images/favicon.ico" sizes="any">
 <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
 <style>
-  main.wide{max-width:1100px}
   #frame{height:78vh}
   .tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
   .tools a{text-decoration:none}
@@ -22,7 +22,8 @@
   </div>
   <p class="muted" id="note">Loading...</p>
   <div class="tools" id="tabs"></div>
-  <div id="viewer" hidden>
+
+  <div id="linkView" hidden>
     <div class="tools">
       <button id="refresh">Refresh bracket</button>
       <a id="openFull" href="#" target="_blank" rel="noopener"><button class="gray">Open full page</button></a>
@@ -33,12 +34,31 @@
       <p class="muted">If the bracket doesn't appear, use "Open full page" above.</p>
     </div>
   </div>
+
+  <div id="customView" hidden>
+    <div class="card">
+      <h2 id="ctitle"></h2>
+      <p class="muted" id="csub"></p>
+      <div id="cbody"></div>
+    </div>
+  </div>
 </main>
 <script src="config.js"></script><script src="app.js"></script>
+<script src="bracket.js"></script><script src="bracketView.js"></script>
 <script>
 nav("brackets.html");
 db("settings/tournamentMode").then(v => { if (v === true) $("#tBanner").hidden = false; }).catch(() => {});
-let list = [], current = null;
+
+let items = [], current = null, lastCustom = "";
+
+// Bracket HQ links + built-in tournaments, in the order they were added.
+async function loadItems() {
+  const [b, t] = await Promise.all([db("brackets"), getTournaments()]);
+  items = [
+    ...(b ? Object.entries(b).filter(([, v]) => v.hidden !== true).map(([id, v]) => ({ key: "b-" + id, raw: id, kind: "link", name: v.name, url: v.url, order: v.order || 0 })) : []),
+    ...t.filter(x => !x.hidden).map(x => ({ key: "t-" + x.id, raw: x.id, kind: "custom", name: x.name, t: x, order: x.order }))
+  ].sort((a, b) => a.order - b.order);
+}
 
 // https://brackethq.com/b/abc12 (or .../embed) -> https://brackethq.com/b/abc12/embed/
 function toEmbed(url) {
@@ -47,39 +67,64 @@ function toEmbed(url) {
 }
 
 function renderTabs() {
-  const tabs = $("#tabs");
-  tabs.replaceChildren();
-  list.forEach(b => {
+  const tabs = $("#tabs"); tabs.replaceChildren();
+  items.forEach(b => {
     const btn = document.createElement("button");
     btn.textContent = b.name;
-    btn.className = b.id === current.id ? "" : "gray";
-    btn.onclick = () => show(b.id);
+    btn.className = b.key === current.key ? "" : "gray";
+    btn.onclick = () => show(b.key);
     tabs.appendChild(btn);
   });
 }
 
-function show(id) {
-  current = list.find(b => b.id === id) || list[0];
-  history.replaceState(null, "", "#" + current.id);
-  const embed = toEmbed(current.url);
-  $("#title").textContent = current.name;
-  $("#frame").src = embed;
-  $("#openFull").href = embed.replace(/embed\/$/, "");
-  $("#refresh").onclick = () => { $("#frame").src = embed; };
-  $("#viewer").hidden = false;
+function drawCustom() {
+  const t = current.t;
+  $("#ctitle").textContent = t.name;
+  $("#csub").textContent = [t.sport, TYPE_LABELS[t.type] || t.type, t.participants.length + " players"].filter(Boolean).join(" · ") +
+    (t.description ? " — " + t.description : "");
+  renderBracket($("#cbody"), t);
+  lastCustom = JSON.stringify(t);
+}
+
+function show(key) {
+  current = items.find(b => b.key === key || b.raw === key) || items[0];
+  history.replaceState(null, "", "#" + current.key);
   renderTabs();
+  $("#linkView").hidden = current.kind !== "link";
+  $("#customView").hidden = current.kind !== "custom";
+  if (current.kind === "link") {
+    const embed = toEmbed(current.url);
+    $("#title").textContent = current.name;
+    $("#frame").src = embed;
+    $("#openFull").href = embed.replace(/embed\/$/, "");
+    $("#refresh").onclick = () => { $("#frame").src = embed; };
+  } else drawCustom();
 }
 
 (async () => {
   try {
-    const data = await db("brackets");
-    list = data ? Object.entries(data).map(([id, v]) => ({ id, ...v })).sort((a, b) => a.order - b.order) : [];
-    if (!list.length) {
-      $("#note").textContent = "No brackets have been added yet. An admin can add them on the Admin page.";
-      return;
-    }
+    await loadItems();
+    if (!items.length) { $("#note").textContent = "No brackets to show right now."; return; }
     $("#note").textContent = "";
-    show(decodeURIComponent(location.hash.slice(1)));
+    const want = decodeURIComponent(location.hash.slice(1));
+    if (want && items.some(x => x.key === want || x.raw === want)) { show(want); return; }
+    // No link to a specific bracket: use the admin's choice of what to open first.
+    let pref = "first";
+    try { pref = (await db("settings/bracketsDefault")) || "first"; } catch {}
+    const pick = pref === "builtin" ? items.find(x => x.kind === "custom") : pref === "link" ? items.find(x => x.kind === "link") : null;
+    show((pick || items[0]).key);
   } catch (e) { $("#note").textContent = e.message; }
 })();
-</script></body></html> 
+
+// Built-in brackets refresh by themselves so scores show up live.
+setInterval(async () => {
+  if (!current || current.kind !== "custom") return;
+  try {
+    await loadItems();
+    const fresh = items.find(x => x.key === current.key);
+    if (!fresh) { if (items.length) show(items[0].key); else location.reload(); return; }
+    current = fresh;
+    if (JSON.stringify(fresh.t) !== lastCustom) drawCustom();
+  } catch {}
+}, 10000);
+</script></body></html>

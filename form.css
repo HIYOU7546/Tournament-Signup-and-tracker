@@ -1,0 +1,92 @@
+/* ---------- segmented tabs ---------- */
+.seg{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+.seg button{background:var(--card);color:var(--muted);border:1px solid var(--line);padding:10px 18px}
+.seg button.on{background:var(--brand);color:var(--brand-ink);border-color:var(--brand)}
+
+/* ---------- the form people fill in ---------- */
+.fm{max-width:720px;margin:0 auto}
+.fm-head{background:var(--card);border:1px solid var(--line);border-top:8px solid var(--brand);border-radius:14px;padding:22px 24px;margin-bottom:14px}
+.fm-title{margin:0;font-size:1.7rem;line-height:1.2}
+.fm-desc{margin:10px 0 0;color:var(--muted);white-space:pre-wrap}
+.fm-note{color:var(--bad);font-size:.85rem;margin:12px 0 0}
+.fm-q{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 22px;margin-bottom:12px;transition:border-color .15s,box-shadow .15s}
+.fm-q:focus-within{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand)}
+.fm-q.bad{border-color:var(--bad);box-shadow:0 0 0 1px var(--bad)}
+.fm-q.info{border-left:6px solid var(--brand)}
+.fm-label{font-weight:700;font-size:1.05rem;margin-bottom:4px;white-space:pre-wrap}
+.fm-star{color:var(--bad)}
+.fm-help{color:var(--muted);font-size:.9rem;margin-bottom:10px;white-space:pre-wrap}
+.fm-q textarea{min-height:110px}
+.fm-opt{display:flex;align-items:center;gap:12px;padding:9px 8px;border-radius:10px;cursor:pointer}
+.fm-opt:hover{background:rgba(242,183,5,.08)}
+.fm-opt input{width:18px;height:18px;margin:0;accent-color:var(--brand);flex:none}
+.fm-err{color:var(--bad);font-size:.85rem;margin-top:8px;min-height:0}
+.fm-actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:6px}
+.fm-submit{padding:14px 30px;font-size:1.05rem}
+.fm-done{background:var(--card);border:1px solid var(--line);border-top:8px solid var(--brand);border-radius:14px;padding:26px 24px;max-width:720px;margin:0 auto;text-align:center}
+.fm-done h2{margin:0 0 8px}
+.fm-done p{margin:6px 0 16px;white-space:pre-wrap}
+
+/* ---------- toggle switch ---------- */
+.sw{display:inline-flex;gap:10px;align-items:center;cursor:pointer;user-select:none}
+.sw input{display:none}
+.sw-ui{width:40px;height:22px;border-radius:22px;background:#444;position:relative;transition:.15s;flex:none}
+.sw-ui::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.15s}
+.sw input:checked+.sw-ui{background:var(--brand)}
+.sw input:checked+.sw-ui::after{left:21px;background:#111}
+
+/* ---------- form builder ---------- */
+.fb-top{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:8px 0}
+.fb-title{flex:1;font-size:1.4rem;font-weight:800;color:var(--brand);min-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fb-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:10px 0 16px}
+.fb-tabs button{background:transparent;color:var(--muted);border-radius:0;border-bottom:3px solid transparent;padding:10px 16px}
+.fb-tabs button.on{color:var(--brand);border-bottom-color:var(--brand)}
+.fb-wrap{max-width:760px;margin:0 auto}
+.fb-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:12px}
+.fb-card.head{border-top:8px solid var(--brand)}
+.fb-q{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 20px;margin-bottom:12px;transition:border-color .15s}
+.fb-q:focus-within{border-color:var(--brand);box-shadow:-5px 0 0 0 var(--brand)}
+.fb-qtop{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+.fb-qtop select{width:auto;margin:0;flex:1;min-width:150px}
+.fb-num{font-weight:800;color:var(--brand);min-width:34px}
+.fb-actions{display:flex;gap:4px;margin-left:auto}
+.fb-opt{display:flex;gap:6px;align-items:center}
+.fb-opt input{margin:4px 0}
+.fb-opt button{padding:6px 10px}
+.fb-add{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+.fb-set{display:flex;flex-direction:column;gap:14px}
+.fb-hint{color:var(--muted);font-size:.85rem;margin:0}
+
+/* ---------- responses ---------- */
+.rwrap{overflow:auto;max-height:60vh;border:1px solid var(--line);border-radius:12px}
+table.resp{border-collapse:collapse;min-width:100%}
+table.resp th,table.resp td{padding:8px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-size:.92rem}
+table.resp th{position:sticky;top:0;background:var(--card);color:var(--muted);font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+table.resp td{white-space:pre-line;max-width:320px}
+.sum-q{margin:0 0 16px}
+.sum-q h4{margin:0 0 6px}
+.sum-row{display:flex;align-items:center;gap:10px;margin:4px 0;font-size:.9rem}
+.sum-name{min-width:120px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sum-bar{height:10px;border-radius:6px;background:var(--brand);min-width:2px}
+
+.fm-prog{color:var(--muted);font-size:.85rem;margin:0 0 10px;text-align:right}
+.fm-head.sec{border-top-width:4px}
+.fm-page[hidden]{display:none}
+.fb-q.sec{border-top:8px solid var(--brand);background:var(--card)}
+.fb-q.sec:focus-within{box-shadow:none}
+
+.fb-logic{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)}
+.fb-lrow{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0}
+.fb-lrow select{width:auto;margin:0;flex:1;min-width:140px;padding:8px}
+.fb-lrow input{margin:0;padding:8px}
+
+/* textarea + select styled like the text inputs (these rules used to live only in bracket.css) */
+textarea{width:100%;padding:12px;margin:5px 0;border:1px solid var(--line);border-radius:10px;font-size:1rem;background:var(--bg);color:var(--ink);font-family:inherit;font-weight:400;min-height:90px;resize:vertical}
+textarea::placeholder{color:var(--muted)}
+textarea:focus{outline:2px solid var(--brand);border-color:var(--brand)}
+select{width:100%;padding:12px;margin:5px 0;border:1px solid var(--line);border-radius:10px;font-size:1rem;background:var(--bg);color:var(--ink)}
+.fb-card.head textarea,.fb-q.sec textarea{font-family:inherit}
+
+/* extra space above text-only blocks when something comes before them */
+.fm-page > * + .fm-q.info{margin-top:32px}
+.fb-q + .fb-q.txt{margin-top:32px}

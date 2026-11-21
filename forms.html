@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tournament Sign-Up Forms</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="form.css">
+<link rel="icon" type="image/svg+xml" href="images/favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32.png">
+<link rel="icon" href="images/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="images/apple-touch-icon.png">
+</head><body>
+<main class="wide" style="max-width:1000px">
+  <p style="margin-bottom:0"><a href="admin.html" style="color:var(--brand)">&larr; Back to Admin</a></p>
+
+  <div class="card" id="needLogin" hidden>
+    <h2>Admin login needed</h2>
+    <p>Please <a href="admin.html" style="color:var(--brand)">log in on the Admin page</a> first, then come back here.</p>
+  </div>
+
+  <!-- ===== list ===== -->
+  <div id="listView" hidden>
+    <h1>Tournament sign-up forms</h1>
+    <p class="muted">Build a form, switch it on, and it appears on the sign-up page. Turn the "Tournament sign-up" page toggle on in Admin too.</p>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+        <h2 style="margin:0">Your forms</h2>
+        <button id="newBtn">+ New form</button>
+      </div>
+      <div id="flist"></div>
+      <div id="listMsg" class="msg err"></div>
+    </div>
+  </div>
+
+  <!-- ===== editor ===== -->
+  <div id="editor" hidden>
+    <div class="fb-top">
+      <button class="gray small" id="backBtn">&larr; All forms</button>
+      <div class="fb-title" id="topTitle">Untitled form</div>
+      <span class="muted" id="unsaved"></span>
+      <button id="saveBtn">Save form</button>
+    </div>
+    <div id="saveMsg" class="msg"></div>
+
+    <div class="fb-tabs">
+      <button data-tab="edit">Questions</button>
+      <button data-tab="preview">Preview</button>
+      <button data-tab="responses" id="respTab">Responses</button>
+    </div>
+
+    <!-- Questions -->
+    <section class="fb-wrap" data-pane="edit">
+      <div class="fb-card head">
+        <input id="fTitle" maxlength="120" placeholder="Form title" style="font-size:1.4rem;font-weight:700">
+        <textarea id="fDesc" maxlength="1000" placeholder="Form description (optional)" style="min-height:70px"></textarea>
+      </div>
+      <div id="qlist"></div>
+      <div class="fb-add">
+        <button id="addQ">+ Add question</button>
+        <button class="gray" id="addSec">+ Add section</button>
+        <button class="gray" id="addInfo">+ Add text block</button>
+      </div>
+      <div class="fb-card">
+        <h2 style="margin-top:0">Form settings</h2>
+        <div class="fb-set">
+          <div>
+            <label class="sw"><input type="checkbox" id="fOpen"><span class="sw-ui"></span><span>Accepting responses (shows on the sign-up page)</span></label>
+          </div>
+          <div>
+            <label class="sw"><input type="checkbox" id="fLogin"><span class="sw-ui"></span><span>Require Google sign-in (uses the Required email set on the Admin page)</span></label>
+            <p class="fb-hint" style="margin-top:6px">Students must sign in first. It records their email and allows one response per student.</p>
+          </div>
+          <div>
+            <label class="muted" for="fConf" style="font-size:.85rem">Confirmation message after they submit</label>
+            <textarea id="fConf" maxlength="500" placeholder="Thanks! Your response has been recorded." style="min-height:70px"></textarea>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Preview -->
+    <section data-pane="preview" hidden>
+      <p class="muted" style="text-align:center">This is how students will see it. Nothing here is sent.</p>
+      <div id="pvHost"></div>
+    </section>
+
+    <!-- Responses -->
+    <section data-pane="responses" hidden>
+      <div class="fb-card">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:space-between">
+          <h2 style="margin:0" id="respCount">Responses</h2>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="small gray" id="refreshResp">Refresh</button>
+            <button class="small" id="csvBtn">Download CSV</button>
+            <button class="small bad" id="delAllBtn">Delete all</button>
+          </div>
+        </div>
+        <div id="respMsg" class="msg"></div>
+      </div>
+      <div class="fb-card" id="sumCard" hidden><h2 style="margin-top:0">Summary</h2><div id="sumBody"></div></div>
+      <div class="fb-card" id="brCard" hidden>
+        <h2 style="margin-top:0">Add these sign-ups to a bracket</h2>
+        <p class="fb-hint" style="margin:0 0 8px">Pick the question that holds each player's name, then choose a bracket. Names already in the bracket are skipped. You can only add to a bracket that has no scores yet.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <select id="brQ" style="width:auto;flex:1;min-width:180px;margin:0"></select>
+          <select id="brTarget" style="width:auto;flex:1;min-width:180px;margin:0"></select>
+          <button id="brBtn">Add to bracket</button>
+        </div>
+        <div id="brMsg" class="msg"></div>
+      </div>
+      <div class="rwrap" id="respTable"></div>
+    </section>
+  </div>
+</main>
+<script src="config.js"></script><script src="app.js"></script><script src="formView.js"></script>
+<script>
+nav("admin.html");
+
+let forms = [], counts = {}, draft = null, tab = "edit", dirty = false, responses = [];
+const qid = () => "q" + Math.random().toString(36).slice(2, 8);
+const newQ = (type = "short", text = "", required = false) =>
+  ({ id: qid(), type, text, help: "", required, options: CHOICE_TYPES.includes(type) ? ["Option 1"] : [] });
+const blank = () => ({ id: null, title: "", description: "", confirmation: "", open: false, requireLogin: false, order: 0,
+  questions: [newQ("short", "Player name", true)] });
+const setMsg = (el, t, ok) => { el.className = "msg " + (ok ? "ok" : "err"); el.textContent = t || ""; };
+
+if (!sessionStorage.getItem("token")) $("#needLogin").hidden = false;
+else boot();
+
+async function boot() {
+  try { await loadList(); } catch (e) { $("#listView").hidden = false; setMsg($("#listMsg"), e.message); return; }
+  const h = decodeURIComponent(location.hash.slice(1));
+  const f = forms.find(x => x.id === h);
+  if (h === "new") openNew(); else if (f) openForm(f); else showList();
+}
+
+// ---------- list ----------
+async function loadList() {
+  forms = await getForms();
+  counts = {};
+  try {
+    const all = (await db("responses", "GET", undefined, true)) || {};
+    Object.keys(all).forEach(f => counts[f] = Object.keys(all[f] || {}).length);
+  } catch {}
+  renderList();
+}
+function showList() {
+  $("#editor").hidden = true; $("#listView").hidden = false;
+  history.replaceState(null, "", location.pathname); renderList();
+}
+function renderList() {
+  const el = $("#flist"); el.replaceChildren();
+  if (!forms.length) { const p = document.createElement("p"); p.className = "muted"; p.textContent = "No forms yet. Click New form to make one."; el.appendChild(p); return; }
+  forms.forEach(f => {
+    const row = document.createElement("div"); row.className = "trow";
+    const info = document.createElement("div"); info.className = "info";
+    const n = document.createElement("strong"); n.textContent = f.title;
+    const s = document.createElement("div"); s.className = "muted";
+    s.textContent = `${f.questions.filter(isAsk).length} questions · ${counts[f.id] || 0} responses` + (f.requireLogin ? " · Google sign-in required" : "");
+    info.append(n, s);
+    const sw = document.createElement("label"); sw.className = "sw";
+    const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = f.open;
+    const ui = document.createElement("span"); ui.className = "sw-ui";
+    const lt = document.createElement("span"); lt.textContent = f.open ? "Open" : "Closed";
+    cb.onchange = async () => {
+      try { await db(`forms/${f.id}`, "PATCH", { open: cb.checked }, true); f.open = cb.checked; lt.textContent = cb.checked ? "Open" : "Closed"; setMsg($("#listMsg"), ""); }
+      catch (e) { cb.checked = !cb.checked; setMsg($("#listMsg"), e.message); }
+    };
+    sw.append(cb, ui, lt);
+    const open = document.createElement("button"); open.className = "small"; open.textContent = "Edit";
+    open.onclick = () => openForm(f);
+    row.append(info, sw, open); el.appendChild(row);
+  });
+}
+$("#newBtn").onclick = () => openNew();
+
+// ---------- open editor ----------
+function openNew() { draft = blank(); dirty = false; history.replaceState(null, "", "#new"); showEditor(); }
+function openForm(f) {
+  draft = JSON.parse(JSON.stringify(f)); dirty = false;
+  history.replaceState(null, "", "#" + f.id); showEditor();
+}
+function showEditor() {
+  $("#listView").hidden = true; $("#editor").hidden = false;
+  $("#fTitle").value = draft.title; $("#fDesc").value = draft.description; $("#fConf").value = draft.confirmation;
+  $("#fOpen").checked = draft.open; $("#fLogin").checked = draft.requireLogin;
+  $("#topTitle").textContent = draft.title.trim() || "Untitled form";
+  $("#unsaved").textContent = ""; setMsg($("#saveMsg"), "");
+  $("#saveBtn").textContent = draft.id ? "Save changes" : "Save form";
+  $("#respTab").textContent = "Responses" + (draft.id && counts[draft.id] ? ` (${counts[draft.id]})` : "");
+  renderQuestions(); showTab("edit");
+}
+function touch() { dirty = true; $("#unsaved").textContent = "Unsaved changes"; }
+
+$("#backBtn").onclick = () => { if (!dirty || confirm("Leave without saving your changes?")) showList(); };
+$("#fTitle").oninput = e => { draft.title = e.target.value; $("#topTitle").textContent = draft.title.trim() || "Untitled form"; touch(); };
+$("#fDesc").oninput = e => { draft.description = e.target.value; touch(); };
+$("#fConf").oninput = e => { draft.confirmation = e.target.value; touch(); };
+$("#fOpen").onchange = e => { draft.open = e.target.checked; touch(); };
+$("#fLogin").onchange = e => { draft.requireLogin = e.target.checked; touch(); };
+
+// ---------- tabs ----------
+function showTab(name) {
+  tab = name;
+  document.querySelectorAll("[data-pane]").forEach(p => p.hidden = p.dataset.pane !== name);
+  document.querySelectorAll("[data-tab]").forEach(b => b.classList.toggle("on", b.dataset.tab === name));
+  if (name === "preview") drawPreview();
+  if (name === "responses") loadResponses();
+}
+document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+
+function cleanForm() {
+  return { ...draft, title: draft.title.trim() || "Untitled form", questions: draft.questions.map(q => ({ ...q, options: (q.options || []).filter(o => o.trim()) })) };
+}
+function drawPreview() { renderForm($("#pvHost"), cleanForm(), { preview: true }); }
+
+// ---------- logic ----------
+const NOVAL = ["empty", "filled", "on", "off"];
+const PRESET = () => ({ action: "hide", match: "all", rules: [{ src: "setting:login", op: "on", val: "" }] });
+const isPreset = l => l && l.action === "hide" && l.match === "all" && l.rules.length === 1 && l.rules[0].src === "setting:login" && l.rules[0].op === "on";
+
+function logicBlock(q, i) {
+  const box = document.createElement("div"); box.className = "fb-logic";
+  const mkSel = (opts, value, fn) => {
+    const s = document.createElement("select");
+    opts.forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; s.appendChild(o); });
+    s.value = value; s.onchange = () => fn(s.value); return s;
+  };
+  const earlier = draft.questions.slice(0, i).filter(isAsk);
+  const mode = !q.logic ? "none" : (isPreset(q.logic) && !q._custom) ? "hideLogin" : "custom";
+
+  const top = document.createElement("div"); top.className = "fb-lrow";
+  top.appendChild(Object.assign(document.createElement("span"), { className: "fb-hint", textContent: "Logic" }));
+  top.appendChild(mkSel([["none", "None (always show)"], ["hideLogin", "Hide when Google sign-in is required"], ["custom", "Custom logic..."]], mode, m => {
+    if (m === "none") { q.logic = null; q._custom = false; }
+    else if (m === "hideLogin") { q.logic = PRESET(); q._custom = false; }
+    else {
+      q._custom = true;
+      if (!q.logic) q.logic = { action: "show", match: "all", rules: [earlier.length ? { src: earlier[0].id, op: "equals", val: "" } : { src: "setting:login", op: "on", val: "" }] };
+    }
+    touch(); renderQuestions();
+  }));
+  box.appendChild(top);
+
+  if (mode === "hideLogin") {
+    box.appendChild(Object.assign(document.createElement("p"), { className: "fb-hint", textContent: "Hidden when \"Require Google sign-in\" is on, since the student's email is recorded automatically." }));
+  }
+  if (mode === "none" && q.type === "email" && !q.logic) {
+    const tip = document.createElement("p"); tip.className = "fb-hint";
+    tip.append("Tip: when Google sign-in is required, their email is recorded automatically. ");
+    const a = document.createElement("button"); a.className = "small gray"; a.textContent = "Hide this question then";
+    a.onclick = () => { q.logic = PRESET(); q._custom = false; touch(); renderQuestions(); };
+    tip.appendChild(a); box.appendChild(tip);
+  }
+
+  if (mode === "custom") {
+    const L = q.logic;
+    const head = document.createElement("div"); head.className = "fb-lrow";
+    head.append(
+      mkSel([["show", "Show this question"], ["hide", "Hide this question"]], L.action, v => { L.action = v; touch(); }),
+      document.createTextNode("when"),
+      mkSel([["all", "all rules match"], ["any", "any rule matches"]], L.match, v => { L.match = v; touch(); }));
+    box.appendChild(head);
+    L.rules.forEach((r, k) => {
+      const row = document.createElement("div"); row.className = "fb-lrow";
+      const srcOpts = [["setting:login", "Google sign-in is required"], ...earlier.map(e => [e.id, e.text || "(untitled question)"])];
+      if (!srcOpts.some(s => s[0] === r.src)) srcOpts.push([r.src, "(question no longer above this one)"]);
+      row.appendChild(mkSel(srcOpts, r.src, v => { r.src = v; r.op = v === "setting:login" ? "on" : "equals"; r.val = ""; touch(); renderQuestions(); }));
+      const isSet = r.src === "setting:login";
+      const ops = isSet ? [["on", "is on"], ["off", "is off"]] : [["equals", "is"], ["notequals", "is not"], ["contains", "contains"], ["empty", "is empty"], ["filled", "is filled in"]];
+      row.appendChild(mkSel(ops, r.op, v => { r.op = v; touch(); renderQuestions(); }));
+      if (!NOVAL.includes(r.op)) {
+        const src = earlier.find(e => e.id === r.src);
+        if (src && CHOICE_TYPES.includes(src.type) && (r.op === "equals" || r.op === "notequals")) {
+          const opts = (src.options || []).filter(o => o.trim()).map(o => [o, o]);
+          if (!opts.some(o => o[0] === r.val)) r.val = opts.length ? opts[0][0] : "";
+          row.appendChild(mkSel(opts, r.val, v => { r.val = v; touch(); }));
+        } else {
+          const inp = document.createElement("input"); inp.value = r.val; inp.placeholder = "value"; inp.maxLength = 120; inp.style.flex = "1";
+          inp.oninput = () => { r.val = inp.value; touch(); }; row.appendChild(inp);
+        }
+      }
+      const x = document.createElement("button"); x.className = "small bad"; x.textContent = "×"; x.title = "Remove rule";
+      x.onclick = () => { L.rules.splice(k, 1); if (!L.rules.length) { q.logic = null; q._custom = false; } touch(); renderQuestions(); };
+      row.appendChild(x); box.appendChild(row);
+    });
+    const add = document.createElement("button"); add.className = "small gray"; add.textContent = "+ Add rule";
+    add.onclick = () => { L.rules.push(earlier.length ? { src: earlier[0].id, op: "equals", val: "" } : { src: "setting:login", op: "on", val: "" }); touch(); renderQuestions(); };
+    box.appendChild(add);
+  }
+  return box;
+}
+
+// ---------- questions ----------
+function renderQuestions() {
+  const box = $("#qlist"); box.replaceChildren();
+  draft.questions.forEach((q, i) => {
+    const info = q.type === "info", sec = q.type === "section";
+    const card = document.createElement("div"); card.className = "fb-q" + (sec ? " sec" : "") + (info ? " txt" : "");
+
+    const top = document.createElement("div"); top.className = "fb-qtop";
+    const num = document.createElement("span"); num.className = "fb-num"; num.textContent = sec ? "Page " + (draft.questions.slice(0, i + 1).filter(x => x.type === "section").length + 1) : info ? "Text" : "Q" + (draft.questions.slice(0, i + 1).filter(isAsk).length);
+    const sel = document.createElement("select");
+    Object.entries(Q_TYPES).forEach(([k, label]) => { const o = document.createElement("option"); o.value = k; o.textContent = label; sel.appendChild(o); });
+    sel.value = q.type;
+    sel.onchange = () => {
+      q.type = sel.value;
+      if (CHOICE_TYPES.includes(q.type) && !(q.options || []).length) q.options = ["Option 1"];
+      if (!isAsk(q)) q.required = false;
+      touch(); renderQuestions();
+    };
+    top.append(num, sel);
+    if (isAsk(q)) {
+      const rq = document.createElement("label"); rq.className = "sw";
+      const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = q.required;
+      cb.onchange = () => { q.required = cb.checked; touch(); };
+      const ui = document.createElement("span"); ui.className = "sw-ui";
+      rq.append(cb, ui, Object.assign(document.createElement("span"), { textContent: "Required" }));
+      top.appendChild(rq);
+    }
+    const acts = document.createElement("div"); acts.className = "fb-actions";
+    const mk = (label, title, fn, cls = "gray", off = false) => { const b = document.createElement("button"); b.className = "small " + cls; b.textContent = label; b.title = title; b.disabled = off; b.onclick = fn; acts.appendChild(b); };
+    const move = d => () => { const a = draft.questions, j = i + d; [a[i], a[j]] = [a[j], a[i]]; touch(); renderQuestions(); };
+    mk("↑", "Move up", move(-1), "gray", i === 0);
+    mk("↓", "Move down", move(1), "gray", i === draft.questions.length - 1);
+    mk("⧉", "Duplicate", () => { draft.questions.splice(i + 1, 0, { ...JSON.parse(JSON.stringify(q)), id: qid() }); touch(); renderQuestions(); });
+    mk("×", "Delete", () => { draft.questions.splice(i, 1); touch(); renderQuestions(); }, "bad");
+    top.appendChild(acts);
+    card.appendChild(top);
+
+    const txt = document.createElement(sec ? "textarea" : "input"); txt.value = q.text; txt.maxLength = 300;
+    if (sec) { txt.style.width = "100%"; txt.style.minHeight = "56px"; txt.style.resize = "vertical"; txt.style.fontSize = "1.4rem"; txt.style.fontWeight = "700"; txt.style.minHeight = "56px"; }
+    txt.placeholder = sec ? "Section title" : info ? "Heading" : "Question"; if (!sec) txt.style.fontWeight = "600";
+    txt.oninput = () => { q.text = txt.value; touch(); };
+    const help = document.createElement(sec ? "textarea" : "input"); help.value = q.help; help.maxLength = 500;
+    if (sec) { help.style.width = "100%"; help.style.minHeight = "70px"; help.style.resize = "vertical"; }
+    help.placeholder = sec ? "Section description (optional)" : info ? "Text (optional)" : "Help text (optional)";
+    help.oninput = () => { q.help = help.value; touch(); };
+    card.append(txt, help);
+    if (!sec) card.appendChild(logicBlock(q, i));
+
+    if (CHOICE_TYPES.includes(q.type)) {
+      const list = document.createElement("div");
+      (q.options || []).forEach((o, k) => {
+        const row = document.createElement("div"); row.className = "fb-opt";
+        const oi = document.createElement("input"); oi.value = o; oi.maxLength = 120; oi.placeholder = "Option " + (k + 1);
+        oi.oninput = () => { q.options[k] = oi.value; touch(); };
+        const x = document.createElement("button"); x.className = "small bad"; x.textContent = "×"; x.title = "Remove option";
+        x.onclick = () => { q.options.splice(k, 1); touch(); renderQuestions(); };
+        row.append(oi, x); list.appendChild(row);
+      });
+      const add = document.createElement("button"); add.className = "small gray"; add.textContent = "+ Add option";
+      add.onclick = () => { q.options = q.options || []; q.options.push(""); touch(); renderQuestions(); };
+      card.append(list, add);
+    }
+    box.appendChild(card);
+  });
+}
+$("#addQ").onclick = () => { draft.questions.push(newQ("short")); touch(); renderQuestions(); const t = $("#qlist").querySelectorAll(".fb-q"); const last = t[t.length - 1]; if (last && last.scrollIntoView) last.scrollIntoView({ behavior: "smooth", block: "center" }); };
+$("#addSec").onclick = () => { draft.questions.push(newQ("section")); touch(); renderQuestions(); const t = $("#qlist").querySelectorAll(".fb-q"); const last = t[t.length - 1]; if (last && last.scrollIntoView) last.scrollIntoView({ behavior: "smooth", block: "center" }); };
+$("#addInfo").onclick = () => { draft.questions.push(newQ("info")); touch(); renderQuestions(); };
+
+// ---------- save ----------
+$("#saveBtn").onclick = async () => {
+  const msg = $("#saveMsg"); setMsg(msg, "");
+  try {
+    const title = draft.title.trim();
+    if (!title) { showTab("edit"); $("#fTitle").focus(); throw new Error("Give the form a title."); }
+    if (!draft.questions.length) throw new Error("Add at least one question.");
+    const questions = draft.questions.map((q, i) => {
+      const out = { id: q.id, type: q.type, text: q.text.trim(), help: (q.help || "").trim(), required: isAsk(q) ? !!q.required : false };
+      if (isAsk(q) && !out.text) throw new Error("Question " + (i + 1) + " needs some text.");
+      if (q.type === "info" && !out.text && !out.help) throw new Error("A text block is empty. Add some text or delete it.");
+      if (q.type === "section" && !out.text) throw new Error("Give each section a title (item " + (i + 1) + ").");
+      if (CHOICE_TYPES.includes(q.type)) {
+        const seen = new Set();
+        out.options = (q.options || []).map(o => o.trim()).filter(o => o && !seen.has(o.toLowerCase()) && seen.add(o.toLowerCase()));
+        if (!out.options.length) throw new Error("Question " + (i + 1) + " needs at least one option.");
+      }
+      if (q.logic && q.type !== "section") {
+        const before = new Set(draft.questions.slice(0, i).filter(isAsk).map(x => x.id)), rules = [];
+        for (const r of q.logic.rules || []) {
+          if (r.src !== "setting:login" && !before.has(r.src)) throw new Error("The logic on item " + (i + 1) + " uses a question that isn't above it. Fix or remove that rule.");
+          if (!NOVAL.includes(r.op) && !String(r.val || "").trim()) throw new Error("Fill in the value for the logic on item " + (i + 1) + ".");
+          rules.push({ src: r.src, op: r.op, val: NOVAL.includes(r.op) ? "" : String(r.val).trim() });
+        }
+        if (rules.length) out.logic = { action: q.logic.action, match: q.logic.match, rules };
+      }
+      return out;
+    });
+    const rec = { title, description: draft.description.trim(), confirmation: draft.confirmation.trim(),
+      open: draft.open, requireLogin: draft.requireLogin, questions };
+    $("#saveBtn").disabled = true;
+    if (!draft.id) {
+      const now = Date.now();
+      const res = await db("forms", "POST", { ...rec, order: now, createdAt: now }, true);
+      draft.id = res.name; draft.order = now;
+    } else await db(`forms/${draft.id}`, "PATCH", rec, true);
+    draft.questions = questions.map(q => ({ ...q, options: q.options || [] }));
+    dirty = false; $("#unsaved").textContent = ""; $("#saveBtn").textContent = "Save changes";
+    history.replaceState(null, "", "#" + draft.id);
+    await loadList(); setMsg(msg, "Saved.", true); renderQuestions();
+  } catch (e) { setMsg(msg, e.message); }
+  $("#saveBtn").disabled = false;
+};
+
+// ---------- responses ----------
+async function loadResponses() {
+  const body = $("#respTable"), msg = $("#respMsg"); setMsg(msg, "");
+  if (!draft.id) { body.replaceChildren(); $("#respCount").textContent = "Responses"; $("#sumCard").hidden = true; $("#brCard").hidden = true; setMsg(msg, "Save the form first. Responses will show up here."); return; }
+  try {
+    const d = (await db(`responses/${draft.id}`, "GET", undefined, true)) || {};
+    responses = Object.entries(d).map(([id, v]) => ({ id, at: v.at || 0, email: v.email || "", answers: v.answers || {} })).sort((a, b) => b.at - a.at);
+  } catch (e) { setMsg(msg, e.message); return; }
+  counts[draft.id] = responses.length;
+  $("#respTab").textContent = "Responses" + (responses.length ? ` (${responses.length})` : "");
+  renderResponses();
+}
+const asks = () => draft.questions.filter(isAsk);
+
+function renderResponses() {
+  $("#respCount").textContent = responses.length + (responses.length === 1 ? " response" : " responses");
+  // summary of choice questions
+  const sb = $("#sumBody"); sb.replaceChildren();
+  const choiceQs = asks().filter(q => CHOICE_TYPES.includes(q.type));
+  $("#sumCard").hidden = !choiceQs.length || !responses.length;
+  choiceQs.forEach(q => {
+    const tally = {}; (q.options || []).forEach(o => tally[o] = 0);
+    responses.forEach(r => { const a = r.answers[q.id]; if (!a) return; (q.type === "checks" ? a.split("\n") : [a]).forEach(x => tally[x] = (tally[x] || 0) + 1); });
+    const max = Math.max(1, ...Object.values(tally));
+    const box = document.createElement("div"); box.className = "sum-q";
+    box.appendChild(Object.assign(document.createElement("h4"), { textContent: q.text }));
+    Object.entries(tally).forEach(([name, n]) => {
+      const row = document.createElement("div"); row.className = "sum-row";
+      const nm = Object.assign(document.createElement("span"), { className: "sum-name", textContent: name, title: name });
+      const bar = document.createElement("div"); bar.className = "sum-bar"; bar.style.width = Math.round(180 * n / max) + "px";
+      row.append(nm, bar, Object.assign(document.createElement("span"), { textContent: String(n) }));
+      box.appendChild(row);
+    });
+    sb.appendChild(box);
+  });
+  // bracket maker
+  const nameQs = asks().filter(q => ["short", "dropdown", "choice"].includes(q.type));
+  $("#brCard").hidden = !nameQs.length || !responses.length;
+  fillTargets();
+  const sel = $("#brQ"); sel.replaceChildren();
+  nameQs.forEach(q => { const o = document.createElement("option"); o.value = q.id; o.textContent = q.text || "(question)"; sel.appendChild(o); });
+  // table
+  const host = $("#respTable"); host.replaceChildren();
+  if (!responses.length) { host.appendChild(Object.assign(document.createElement("p"), { className: "muted", style: "padding:14px", textContent: "No responses yet." })); return; }
+  const tbl = document.createElement("table"); tbl.className = "resp";
+  const hr = document.createElement("tr");
+  ["Submitted", "Email", ...asks().map(q => q.text || "(question)"), ""].forEach(h => hr.appendChild(Object.assign(document.createElement("th"), { textContent: h })));
+  tbl.appendChild(hr);
+  responses.forEach(r => {
+    const tr = document.createElement("tr");
+    const cells = [new Date(r.at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }), r.email || "", ...asks().map(q => r.answers[q.id] || "")];
+    cells.forEach(c => tr.appendChild(Object.assign(document.createElement("td"), { textContent: c })));
+    const td = document.createElement("td");
+    const del = Object.assign(document.createElement("button"), { className: "small bad", textContent: "Delete" });
+    del.onclick = async () => {
+      if (!confirm("Delete this response?")) return;
+      try { await db(`responses/${draft.id}/${r.id}`, "DELETE", undefined, true); await loadResponses(); } catch (e) { setMsg($("#respMsg"), e.message); }
+    };
+    td.appendChild(del); tr.appendChild(td); tbl.appendChild(tr);
+  });
+  host.appendChild(tbl);
+}
+$("#refreshResp").onclick = () => loadResponses();
+$("#delAllBtn").onclick = async () => {
+  if (!responses.length || !confirm("Delete all " + responses.length + " responses? This can't be undone.")) return;
+  try { await db(`responses/${draft.id}`, "DELETE", undefined, true); await loadResponses(); } catch (e) { setMsg($("#respMsg"), e.message); }
+};
+
+function csvCell(v) { return '"' + String(v == null ? "" : v).replace(/\n/g, "; ").replace(/"/g, '""') + '"'; }
+function buildCsv() {
+  const head = ["Submitted", "Email", ...asks().map(q => q.text)];
+  const rows = responses.map(r => [new Date(r.at).toISOString(), r.email, ...asks().map(q => r.answers[q.id] || "")]);
+  return "\uFEFF" + [head, ...rows].map(r => r.map(csvCell).join(",")).join("\r\n");
+}
+$("#csvBtn").onclick = () => {
+  if (!responses.length) { setMsg($("#respMsg"), "No responses to download yet."); return; }
+  const blob = new Blob([buildCsv()], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = (draft.title.trim() || "form").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") + "-responses.csv";
+  document.body.appendChild(a); a.click(); a.remove();
+};
+
+let brackets = [];
+async function fillTargets() {
+  try { brackets = await getTournaments(); } catch { brackets = []; }
+  const sel = $("#brTarget"), keep = sel.value; sel.replaceChildren();
+  const mk = (v, t, dis) => { const o = document.createElement("option"); o.value = v; o.textContent = t; if (dis) o.disabled = true; sel.appendChild(o); };
+  mk("__new", "+ Create a new bracket");
+  brackets.forEach(t => {
+    const started = Object.keys(t.results || {}).length > 0;
+    mk(t.id, `${t.name} (${t.participants.length} players)` + (started ? " - already started" : ""), started);
+  });
+  if ([...sel.options].some(o => o.value === keep && !o.disabled)) sel.value = keep;
+}
+
+$("#brBtn").onclick = async () => {
+  const m = $("#brMsg"); setMsg(m, "");
+  try {
+    const qidSel = $("#brQ").value, target = $("#brTarget").value;
+    const found = [], seen = new Set();
+    responses.slice().sort((a, b) => a.at - b.at).forEach(r => {
+      const n = (r.answers[qidSel] || "").trim().slice(0, 40), k = n.toLowerCase();
+      if (n && !seen.has(k)) { seen.add(k); found.push(n); }
+    });
+    let link;
+    if (target === "__new") {
+      if (found.length < 2) throw new Error("Need at least 2 different names to make a bracket.");
+      if (found.length > 64) throw new Error("A bracket holds up to 64 players, and there are " + found.length + ".");
+      const now = Date.now();
+      const rec = { name: draft.title.trim() || "Tournament", type: "se", sport: "", description: "", participants: found, third: false, gf: 2, iter: 1,
+        showSeeds: true, lineStyle: "elbow", linePattern: "solid", lineWidth: 2, lineColor: "gold", order: now, createdAt: now };
+      const res = await db("tournaments", "POST", rec, true);
+      link = res.name; m.className = "msg ok"; m.textContent = "Bracket created with " + found.length + " players. ";
+    } else {
+      const t = (await getTournaments()).find(x => x.id === target);
+      if (!t) throw new Error("That bracket no longer exists. Pick another.");
+      if (Object.keys(t.results || {}).length) throw new Error("That bracket already has scores, so players can't be added.");
+      const have = new Set(t.participants.map(p => p.toLowerCase()));
+      const fresh = found.filter(n => !have.has(n.toLowerCase()));
+      if (!fresh.length) throw new Error("Everyone is already in that bracket.");
+      const max = t.type === "rr" ? 24 : 64, room = max - t.participants.length;
+      if (room <= 0) throw new Error("That bracket is full (" + max + " players).");
+      const add = fresh.slice(0, room), all = t.participants.concat(add);
+      await db(`tournaments/${t.id}/participants`, "PUT", all, true);
+      link = t.id; m.className = "msg ok";
+      m.textContent = `Added ${add.length} player${add.length === 1 ? "" : "s"} to "${t.name}"` +
+        (fresh.length < found.length ? `, skipped ${found.length - fresh.length} already in it` : "") +
+        (add.length < fresh.length ? `, ${fresh.length - add.length} didn't fit` : "") + ". ";
+    }
+    const a = Object.assign(document.createElement("a"), { href: "manage.html#" + link, textContent: "Open it in the bracket manager" });
+    a.style.color = "var(--brand)"; m.appendChild(a);
+    fillTargets();
+  } catch (e) { setMsg(m, e.message); }
+};
+</script></body></html>

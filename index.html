@@ -1,52 +1,79 @@
 <!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Open Play Sign Up</title><link rel="stylesheet" href="style.css">
+<title>Sign Up</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="form.css">
 <link rel="icon" type="image/svg+xml" href="images/favicon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32.png">
 <link rel="icon" href="images/favicon.ico" sizes="any">
 <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
 </head><body>
 <main id="mainWrap" style="visibility:hidden">
-  <h1>Open Play Sign Up</h1>
-  <p class="muted">Add up to 4 players. You'll be placed at the end of the line.</p>
+  <div class="seg" id="tabs" hidden>
+    <button id="tabOp" class="on"></button>
+    <button id="tabTour"></button>
+  </div>
+
+  <div class="card" id="closedCard" hidden><p id="closedMsg" style="margin:0"></p></div>
+
+  <!-- shared Google sign-in card -->
   <div class="card" id="loginCard" hidden>
-    <h2>Sign in to join the line</h2>
-    <p class="muted">Use your @hamiltonschools.us Google account.</p>
+    <h2 id="loginHeading"></h2>
+    <p class="muted" id="loginIntro"></p>
     <div id="gbtn"></div>
     <div id="gmsg" class="msg err"></div>
   </div>
-  <div class="card" id="formCard">
-    <p class="muted" id="who" hidden style="margin-top:0">Signed in as <strong id="whoEmail"></strong> · <a href="#" id="signout" style="color:var(--brand)">Sign out</a></p>
-    <input id="p1" placeholder="Player 1 (required)" maxlength="30" autocomplete="off">
-    <input id="p2" placeholder="Player 2 (optional)" maxlength="30" autocomplete="off">
-    <input id="p3" placeholder="Player 3 (optional)" maxlength="30" autocomplete="off">
-    <input id="p4" placeholder="Player 4 (optional)" maxlength="30" autocomplete="off">
-    <button id="go">Join the line</button>
-    <div id="msg" class="msg"></div>
-  </div>
-  <div class="card">
-    <h2>The Line <span class="muted" id="count"></span></h2>
-    <div id="list"></div>
-  </div>
+  <p class="muted" id="who" hidden>Signed in as <strong id="whoEmail"></strong> · <a href="#" id="signout" style="color:var(--brand)">Sign out</a></p>
+
+  <!-- open play -->
+  <section id="opView" hidden>
+    <h1 id="opHeading"></h1>
+    <p class="muted" id="opIntro"></p>
+    <div class="card" id="formCard">
+      <input id="p1" maxlength="30" autocomplete="off">
+      <input id="p2" maxlength="30" autocomplete="off">
+      <input id="p3" maxlength="30" autocomplete="off">
+      <input id="p4" maxlength="30" autocomplete="off">
+      <button id="go"></button>
+      <div id="msg" class="msg"></div>
+    </div>
+    <div class="card">
+      <h2><span id="opLineHeading"></span> <span class="muted" id="count"></span></h2>
+      <div id="list"></div>
+    </div>
+  </section>
+
+  <!-- tournament sign-up -->
+  <section id="tourView" hidden>
+    <h1 id="tourHeading"></h1>
+    <p class="muted" id="tourIntro"></p>
+    <div class="seg" id="formPick" hidden></div>
+    <div id="tourHost"></div>
+  </section>
 </main>
-<script src="config.js"></script><script src="Words.js?v=5"></script><script src="app.js?v=5"></script>
+<script src="config.js"></script><script src="words.js?v=4"></script><script src="app.js?v=5"></script><script src="formView.js?v=1"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
 // Safety net: never leave the page blank if something below fails.
 setTimeout(() => { const m = document.getElementById("mainWrap"); if (m) m.style.visibility = ""; }, 4000);
 nav("index.html");
-async function load() {
-  try {
-    const q = await getQueue();
-    const n = q.filter(e => !e.hidden).length;
-    $("#count").textContent = `(${n} group${n === 1 ? "" : "s"})`;
-    renderQueue($("#list"), q);
-  } catch (e) { $("#list").textContent = e.message; }
-}
-// ---- Sign-in gate (admins can switch this on/off) ----
-let requireLogin = false, googleStarted = false;
 
+let st = {}, forms = [], active = "op", formId = null, requireLogin = false, googleStarted = false, lastSig = "";
+const submitted = {};
+
+// ---------- text (editable on the Edit text page) ----------
+function applyText() {
+  const T = TEXT;
+  $("#tabOp").textContent = T.tabOp; $("#tabTour").textContent = T.tabTour;
+  $("#opHeading").textContent = T.opHeading; $("#opIntro").textContent = T.opIntro;
+  ["p1", "p2", "p3", "p4"].forEach((id, i) => $("#" + id).placeholder = T["opP" + (i + 1)]);
+  $("#go").textContent = T.opButton; $("#opLineHeading").textContent = T.opLineHeading;
+  $("#tourHeading").textContent = T.tourHeading; $("#tourIntro").textContent = T.tourIntro;
+  $("#tourIntro").hidden = !T.tourIntro; $("#closedMsg").textContent = T.closed;
+}
+
+// ---------- Google sign-in ----------
 function startGoogle(tries = 0) {
   if (googleStarted) return;
   if (!CONFIG.googleClientId) { $("#gmsg").textContent = "Google sign-in isn't set up yet. Please ask an admin."; return; }
@@ -59,41 +86,88 @@ function startGoogle(tries = 0) {
   google.accounts.id.initialize({
     client_id: CONFIG.googleClientId,
     callback: async resp => {
-      try { await googleSignIn(resp.credential); $("#gmsg").textContent = ""; await refreshGate(); }
+      try { await googleSignIn(resp.credential); $("#gmsg").textContent = ""; await refresh(true); }
       catch (e) { $("#gmsg").textContent = e.message; }
     }
   });
   google.accounts.id.renderButton($("#gbtn"), { theme: "filled_black", size: "large", text: "signin_with" });
 }
-
-async function refreshGate() {
-  let st = {};
-  try { st = (await db("settings")) || {}; } catch {}
-  // Tournament mode: sign-up is closed, send everyone to the brackets.
-  if (st.tournamentMode === true) { location.replace("brackets.html"); return; }
-  requireLogin = st.requireLogin === true;
-  const sess = playerSession();
-  const needLogin = requireLogin && !sess;
-  $("#loginCard").hidden = !needLogin;
-  $("#formCard").hidden = needLogin;
-  $("#who").hidden = !(requireLogin && sess);
-  if (sess) $("#whoEmail").textContent = sess.email;
-  $("#mainWrap").style.visibility = "";
-  if (needLogin) startGoogle();
-}
 $("#signout").onclick = e => {
   e.preventDefault();
   playerLogout();
   if (window.google && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect();
-  refreshGate();
+  refresh(true);
 };
 
+// ---------- deciding what to show ----------
+const tourMode = () => st.tournamentMode === true;
+const opAvailable = () => st.openPlayEnabled !== false && !tourMode();
+const tourAvailable = () => st.tournamentSignupEnabled === true && forms.some(f => f.open);
+
+async function refresh(force) {
+  try { st = (await db("settings")) || {}; } catch { st = st || {}; }
+  setDomain(st.emailDomain);
+  TEXT = { ...TEXT_DEFAULTS, ...(st.text || {}) };
+  Object.keys(TEXT).forEach(k => TEXT[k] = fillDomain(TEXT[k]));
+  try { forms = await getForms(); } catch { forms = []; }
+  applyText();
+
+  const hasOp = opAvailable(), hasTour = tourAvailable();
+  // A running tournament with no tournament sign-up behaves as before: go to the brackets.
+  if (tourMode() && st.tournamentSignupEnabled !== true) { location.replace("brackets.html"); return; }
+
+  const showTab = st.showTourTab === true;
+  if (active === "op" && !hasOp && hasTour) active = "tour";
+  if (active === "tour" && !hasTour && hasOp && !showTab) active = "op";
+  $("#tabs").hidden = !(hasOp && (hasTour || showTab));
+  $("#tabOp").classList.toggle("on", active === "op");
+  $("#tabTour").classList.toggle("on", active === "tour");
+  const tourClosedView = active === "tour" && !hasTour && hasOp && showTab;
+  const nothing = !hasOp && !hasTour;
+  $("#closedCard").hidden = !nothing;
+
+  // which login rule applies to what's on screen
+  const open = forms.filter(f => f.open);
+  if (!open.some(f => f.id === formId)) formId = open.length ? open[0].id : null;
+  const form = open.find(f => f.id === formId) || null;
+  requireLogin = nothing ? false : active === "op" ? st.requireLogin === true : !!(form && form.requireLogin);
+  const sess = playerSession();
+  const needLogin = requireLogin && !sess;
+  $("#loginCard").hidden = nothing || !needLogin;
+  $("#loginHeading").textContent = active === "op" ? TEXT.opLoginHeading : TEXT.tourLoginHeading;
+  $("#loginIntro").textContent = active === "op" ? TEXT.opLoginIntro : TEXT.tourLoginIntro;
+  $("#who").hidden = !(requireLogin && sess);
+  if (sess) $("#whoEmail").textContent = sess.email;
+  if (needLogin) startGoogle();
+
+  $("#opView").hidden = nothing || active !== "op";
+  $("#formCard").hidden = needLogin;
+  $("#tourView").hidden = nothing || active !== "tour";
+  if (tourClosedView) {
+    $("#formPick").hidden = true; lastSig = "";
+    const host = $("#tourHost"); host.replaceChildren();
+    const c = document.createElement("div"); c.className = "card"; c.textContent = TEXT.tourClosed; host.appendChild(c);
+  } else if (active === "tour") drawTournament(open, form, needLogin, force);
+  $("#mainWrap").style.visibility = "";
+}
+
+$("#tabOp").onclick = () => { active = "op"; refresh(true); };
+$("#tabTour").onclick = () => { active = "tour"; refresh(true); };
+
+// ---------- open play ----------
+async function load() {
+  try {
+    const q = await getQueue();
+    const n = q.filter(e => !e.hidden).length;
+    $("#count").textContent = `(${n} group${n === 1 ? "" : "s"})`;
+    renderQueue($("#list"), q);
+  } catch (e) { $("#list").textContent = e.message; }
+}
 $("#go").onclick = async () => {
   const ids = ["#p1", "#p2", "#p3", "#p4"];
   const raw = ids.map(s => $(s).value.trim());
   const players = raw.filter(Boolean);
   const msg = $("#msg"), btn = $("#go");
-  // Tells the student WHICH field is the problem. signup() in app.js enforces the filter again.
   const bad = typeof containsBlockedWord === "function" ? raw.findIndex(v => v && containsBlockedWord(v)) : -1;
   if (bad >= 0) {
     msg.className = "msg err";
@@ -101,19 +175,65 @@ $("#go").onclick = async () => {
     return;
   }
   const useLogin = requireLogin;
-  if (useLogin && !playerSession()) { await refreshGate(); return; }
+  if (useLogin && !playerSession()) { await refresh(true); return; }
   btn.disabled = true;
   try {
     await signup(players, useLogin);
-    msg.className = "msg ok"; msg.textContent = "You're in line!";
+    msg.className = "msg ok"; msg.textContent = TEXT.opSuccess;
     ids.forEach(s => $(s).value = "");
     load();
   } catch (err) {
     msg.className = "msg err"; msg.textContent = err.message;
-    if (useLogin && !playerSession()) refreshGate();
+    if (useLogin && !playerSession()) refresh(true);
   }
   btn.disabled = false;
 };
-refreshGate(); setInterval(refreshGate, 20000);
+
+// ---------- tournament forms ----------
+function drawTournament(open, form, needLogin, force) {
+  const pick = $("#formPick");
+  const sig = JSON.stringify([open, formId, needLogin, !!(form && submitted[form.id])]);
+  if (!force && sig === lastSig) return;         // don't wipe answers someone is typing
+  lastSig = sig;
+  pick.replaceChildren();
+  pick.hidden = open.length < 2;
+  open.forEach(f => {
+    const b = document.createElement("button"); b.textContent = f.title; b.className = f.id === formId ? "on" : "";
+    b.onclick = () => { formId = f.id; refresh(true); };
+    pick.appendChild(b);
+  });
+  const host = $("#tourHost"); host.replaceChildren();
+  if (!form || needLogin) return;
+  if (submitted[form.id]) {
+    const box = document.createElement("div"); box.className = "fm-done";
+    const h = document.createElement("h2"); h.textContent = "Response recorded";
+    const p = document.createElement("p"); p.textContent = form.confirmation || "Thanks! Your response has been recorded.";
+    box.append(h, p);
+    if (!form.requireLogin) {
+      const again = document.createElement("button"); again.className = "gray"; again.textContent = "Submit another response";
+      again.onclick = () => { delete submitted[form.id]; refresh(true); };
+      box.appendChild(again);
+    }
+    host.appendChild(box); return;
+  }
+  renderForm(host, form, {
+    onSubmit: async answers => {
+      if (typeof containsBlockedWord !== "function") throw new Error("The word filter didn't load. Please refresh the page and try again.");
+      const textQs = form.questions.filter(q => q.type === "short" || q.type === "long");
+      if (textQs.some(q => answers[q.id] && containsBlockedWord(answers[q.id])))
+        throw new Error("One of your answers isn't allowed. Please use school-appropriate language.");
+      const rec = { at: Date.now(), answers };
+      if (form.requireLogin) {
+        const sess = playerSession();
+        if (!sess) { await refresh(true); return; }
+        rec.email = sess.email; rec.uid = sess.uid;
+        await db(`responses/${form.id}/${sess.uid}`, "PUT", rec, "player");
+      } else await db(`responses/${form.id}`, "POST", rec);
+      submitted[form.id] = true; refresh(true);
+    }
+  });
+}
+
+refresh(true); setInterval(() => refresh(false), 20000);
 load(); setInterval(load, 5000);
 </script></body></html>
