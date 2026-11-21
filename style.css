@@ -30,3 +30,9 @@ button.bad{background:var(--bad);color:#fff}button.gray{background:#3a3a3a;color
 .big{font-size:1.1rem;word-break:break-all}
 iframe{width:100%;height:70vh;border:1px solid var(--line);border-radius:12px;background:#fff}
 .row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1}
+/* Checkboxes: clear on/off state */
+input[type=checkbox]{-webkit-appearance:none;appearance:none;width:24px!important;height:24px;flex:none;margin:0;border:2px solid #777;border-radius:6px;background:#2a2a2a;cursor:pointer;position:relative;transition:background .15s,border-color .15s}
+input[type=checkbox]:hover{border-color:var(--brand)}
+input[type=checkbox]:checked{background:var(--brand);border-color:var(--brand)}
+input[type=checkbox]:checked::after{content:"";position:absolute;left:6px;top:1px;width:6px;height:12px;border:solid #111;border-width:0 3px 3px 0;transform:rotate(45deg)}
+input[type=checkbox]:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
