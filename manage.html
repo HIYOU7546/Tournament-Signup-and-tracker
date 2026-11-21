@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manage Brackets</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="bracket.css">
+<link rel="icon" type="image/svg+xml" href="images/favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32.png">
+<link rel="icon" href="images/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="images/apple-touch-icon.png">
+</head><body>
+<main class="wide">
+  <h1>Manage Brackets</h1>
+  <p><a href="admin.html" style="color:var(--brand)">&larr; Back to Admin</a></p>
+
+  <div class="card" id="needLogin" hidden>
+    <h2>Admin login needed</h2>
+    <p>Please <a href="admin.html" style="color:var(--brand)">log in on the Admin page</a> first, then come back here.</p>
+  </div>
+
+  <div id="panel" hidden>
+    <div class="card">
+      <h2>Create a bracket</h2>
+      <input id="tName" placeholder="Bracket name (e.g. Mario Kart Friday)" maxlength="60">
+      <select id="tType">
+        <option value="se">Single elimination</option>
+        <option value="de">Double elimination</option>
+        <option value="rr">Round robin</option>
+      </select>
+      <label id="thirdWrap" style="display:flex;gap:10px;align-items:center;margin:6px 0;cursor:pointer">
+        <input type="checkbox" id="tThird" style="width:auto;margin:0"><span>Include a third-place match</span>
+      </label>
+      <textarea id="tPlayers" placeholder="Players, one per line. Seed 1 is the first name."></textarea>
+      <label style="display:flex;gap:10px;align-items:center;margin:6px 0;cursor:pointer">
+        <input type="checkbox" id="tShuffle" style="width:auto;margin:0"><span>Randomize the seeding</span>
+      </label>
+      <button id="createBtn">Create bracket</button>
+      <div id="cMsg" class="msg"></div>
+    </div>
+
+    <div class="card">
+      <h2>Your brackets</h2>
+      <div id="tlist"></div>
+    </div>
+
+    <div class="card" id="viewCard" hidden>
+      <h2 id="vtitle"></h2>
+      <p class="muted" id="vsub"></p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <button class="gray small" id="resetBtn">Reset all scores</button>
+        <button class="bad small" id="delBtn">Delete this bracket</button>
+      </div>
+      <p class="muted">Enter both scores and click Save. The winner moves on automatically. Clear a result to undo it, and anything that depended on it is undone too.</p>
+      <div id="vbody"></div>
+    </div>
+  </div>
+</main>
+<script src="config.js"></script><script src="app.js"></script>
+<script src="bracket.js"></script><script src="bracket-view.js"></script>
+<script>
+nav("admin.html");
+let list = [], sel = null;
+const msg = (t, ok) => { const m = $("#cMsg"); m.className = "msg " + (ok ? "ok" : "err"); m.textContent = t || ""; };
+
+if (!sessionStorage.getItem("token")) $("#needLogin").hidden = false;
+else { $("#panel").hidden = false; reload(); }
+
+function selected() { return list.find(t => t.id === sel) || null; }
+
+async function reload() {
+  try { list = await getTournaments(); } catch (e) { msg(e.message); return; }
+  if (!selected()) sel = null;
+  renderList(); renderView();
+}
+
+function renderList() {
+  const el = $("#tlist"); el.replaceChildren();
+  if (!list.length) { const p = document.createElement("p"); p.className = "muted"; p.textContent = "No brackets yet."; el.appendChild(p); return; }
+  list.forEach(t => {
+    const row = document.createElement("div"); row.className = "trow";
+    const info = document.createElement("div"); info.className = "info";
+    const n = document.createElement("strong"); n.textContent = t.name;
+    const s = document.createElement("div"); s.className = "muted";
+    s.textContent = `${TYPE_LABELS[t.type] || t.type} · ${t.participants.length} players · ${tournamentStatus(t)}`;
+    info.append(n, s);
+    const open = document.createElement("button"); open.className = "small"; open.textContent = t.id === sel ? "Open ✓" : "Open";
+    open.onclick = () => { sel = t.id; renderList(); renderView(); $("#viewCard").scrollIntoView({ behavior: "smooth" }); };
+    row.append(info, open); el.appendChild(row);
+  });
+}
+
+function renderView() {
+  const t = selected();
+  $("#viewCard").hidden = !t;
+  if (!t) return;
+  $("#vtitle").textContent = t.name;
+  $("#vsub").textContent = (TYPE_LABELS[t.type] || t.type) + " · " + t.participants.length + " players";
+  renderBracket($("#vbody"), t, {
+    onSave: async (id, a, b, s1, s2) => { await db(`tournaments/${t.id}/results/${id}`, "PUT", { a, b, s1, s2 }, true); await reload(); },
+    onClear: async id => { await db(`tournaments/${t.id}/results/${id}`, "DELETE", undefined, true); await reload(); }
+  });
+}
+
+$("#tType").onchange = () => { $("#thirdWrap").style.display = $("#tType").value === "se" ? "flex" : "none"; };
+
+$("#createBtn").onclick = async () => {
+  msg();
+  const name = $("#tName").value.trim(), type = $("#tType").value;
+  let players = $("#tPlayers").value.split("\n").map(s => s.trim()).filter(Boolean);
+  try {
+    if (!name) throw new Error("Enter a bracket name.");
+    const seen = new Set();
+    for (const p of players) {
+      if (p.length > 40) throw new Error("Names must be 40 characters or less: " + p.slice(0, 20) + "...");
+      const k = p.toLowerCase();
+      if (seen.has(k)) throw new Error("Each name must be different. Duplicate: " + p);
+      seen.add(k);
+    }
+    const min = type === "de" ? 3 : 2, max = type === "rr" ? 24 : 64;
+    if (players.length < min) throw new Error(type === "de" ? "Double elimination needs at least 3 players." : "This bracket needs at least 2 players.");
+    if (players.length > max) throw new Error("This bracket type allows up to " + max + " players.");
+    if ($("#tShuffle").checked) for (let i = players.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [players[i], players[j]] = [players[j], players[i]]; }
+    const now = Date.now();
+    const rec = { name, type, participants: players, order: now, createdAt: now };
+    if (type === "se") rec.third = $("#tThird").checked;
+    const res = await db("tournaments", "POST", rec, true);
+    $("#tName").value = ""; $("#tPlayers").value = "";
+    sel = res.name;
+    msg("Bracket created.", true);
+    await reload();
+  } catch (e) { msg(e.message); }
+};
+
+$("#resetBtn").onclick = async () => {
+  const t = selected(); if (!t) return;
+  if (!confirm("Clear every score in \"" + t.name + "\"?")) return;
+  try { await db(`tournaments/${t.id}/results`, "DELETE", undefined, true); await reload(); } catch (e) { msg(e.message); }
+};
+$("#delBtn").onclick = async () => {
+  const t = selected(); if (!t) return;
+  if (!confirm("Permanently delete \"" + t.name + "\"?")) return;
+  try { await db(`tournaments/${t.id}`, "DELETE", undefined, true); sel = null; await reload(); } catch (e) { msg(e.message); }
+};
+</script></body></html>
