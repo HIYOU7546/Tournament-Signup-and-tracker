@@ -50,6 +50,15 @@ async function getQueue() {
 async function signup(players, useLogin = false) {
   if (players.length < 1 || players.length > 4) throw new Error("Enter 1 to 4 player names.");
   if (players.some(p => p.length > 30)) throw new Error("Names must be 30 characters or less.");
+  // Word filter: checked right here, immediately before anything is sent to the database.
+  // If words.js didn't load we refuse to send, so the filter can never be silently skipped.
+  if (typeof containsBlockedWord !== "function") {
+    console.error("words.js did not load, so sign-ups are paused.");
+    throw new Error("The word filter didn't load. Please refresh the page and try again.");
+  }
+  if (players.some(p => containsBlockedWord(p))) {
+    throw new Error("One of the names isn't allowed. Please use school-appropriate names.");
+  }
   const now = Date.now();
   const entry = { players, order: now, signedUpAt: now };
   if (!useLogin) return db("queue", "POST", entry);
