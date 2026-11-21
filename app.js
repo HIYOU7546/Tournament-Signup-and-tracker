@@ -114,6 +114,21 @@ async function adminLogin(email, password) {
   sessionStorage.setItem("uid", j.localId);
 }
 
+// Emails a password-reset link (Firebase sends it; the person picks their own password).
+async function sendPasswordReset(email) {
+  const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${CONFIG.apiKey}`, {
+    method: "POST",
+    body: JSON.stringify({ requestType: "PASSWORD_RESET", email })
+  });
+  if (!res.ok) {
+    let code = "";
+    try { code = ((await res.json()).error || {}).message || ""; } catch {}
+    if (code.startsWith("EMAIL_NOT_FOUND")) throw new Error("No login exists for " + email + ".");
+    if (code.startsWith("INVALID_EMAIL")) throw new Error("That email address isn't valid.");
+    throw new Error("Couldn't send the reset email (" + (code || res.status) + ").");
+  }
+}
+
 const removeEntry = id => db("", "PATCH", { [`queue/${id}`]: null, [`signups/${id}`]: null }, true);
 // Clears only the ids you pass in (the admin page passes the non-hidden ones).
 function clearQueue(ids) {

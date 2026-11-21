@@ -14,6 +14,7 @@
     <input id="email" type="email" placeholder="Admin email" autocomplete="username">
     <input id="pw" type="password" placeholder="Password" autocomplete="current-password">
     <button id="loginBtn">Log in</button>
+    <a href="#" id="forgot" style="display:block;margin-top:12px;color:var(--brand)">Forgot password?</a>
     <div id="loginMsg" class="msg err"></div>
   </div>
   <div id="panel" hidden>
@@ -59,9 +60,9 @@
       <p class="muted">Everyone listed here can manage the line, brackets, and admins.</p>
       <div id="alist"></div>
       <h3 style="margin:16px 0 4px">Add a new admin</h3>
-      <p class="muted" style="margin:0 0 6px">Creates a login for them. Give them the email and password you pick.</p>
+      <p class="muted" style="margin:0 0 6px">Creates their login and emails them a link to set their own password, so you never need to share one. Leave the password blank to use a random one.</p>
       <input id="aEmail" type="email" placeholder="Their email" autocomplete="off">
-      <input id="aPw" type="text" placeholder="Temporary password (6+ characters)" autocomplete="off">
+      <input id="aPw" type="text" placeholder="Temporary password (optional)" autocomplete="off">
       <button id="addAdmin">Create admin</button>
       <h3 style="margin:16px 0 4px">Or add someone who already has a login</h3>
       <input id="aUid" placeholder="Their User UID (from Firebase Authentication)" autocomplete="off">
@@ -168,17 +169,30 @@ async function loadAdmins() {
     const n = document.createElement("strong"); n.textContent = label + (uid === me ? " (you)" : "");
     const u = document.createElement("span"); u.className = "muted"; u.style.wordBreak = "break-all"; u.textContent = uid;
     info.append(n, u); row.appendChild(info);
-    if (uid !== me) {
-      const b = document.createElement("button"); b.className = "small bad"; b.textContent = "Remove";
-      b.onclick = () => confirm("Remove " + label + " as an admin?") && aguard(() => db(`admins/${uid}`, "DELETE", undefined, true));
-      row.appendChild(b);
-    }
+    const act = document.createElement("div"); act.className = "actions"; act.style.flexWrap = "wrap"; act.style.justifyContent = "flex-end";
+    const mk = (text, cls, fn) => { const b = document.createElement("button"); b.className = "small " + cls; b.textContent = text; b.onclick = fn; act.appendChild(b); };
+    mk("Send reset", "gray", () => aguard(async () => {
+      const email = /^\S+@\S+\.\S+$/.test(label) ? label : prompt("Email address for " + label + ":");
+      if (!email) return;
+      await sendPasswordReset(email.trim());
+      amsg("Password reset email sent to " + email.trim() + ".", true);
+    }));
+    if (uid !== me) mk("Remove", "bad", () => confirm("Remove " + label + " as an admin?") && aguard(() => db(`admins/${uid}`, "DELETE", undefined, true)));
+    row.appendChild(act);
     el.appendChild(row);
   });
 }
+function randomPassword() {
+  const abc = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = new Uint8Array(18); crypto.getRandomValues(bytes);
+  return Array.from(bytes, b => abc[b % abc.length]).join("");
+}
 $("#addAdmin").onclick = () => aguard(async () => {
-  const email = $("#aEmail").value.trim().toLowerCase(), password = $("#aPw").value;
-  if (!email || password.length < 6) throw new Error("Enter an email and a password of at least 6 characters.");
+  const email = $("#aEmail").value.trim().toLowerCase();
+  const typed = $("#aPw").value;
+  if (!email) throw new Error("Enter their email.");
+  if (typed && typed.length < 6) throw new Error("A password must be at least 6 characters (or leave it blank).");
+  const password = typed || randomPassword();
   const r = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${CONFIG.apiKey}`, {
     method: "POST", body: JSON.stringify({ email, password, returnSecureToken: false })
   });
@@ -192,7 +206,10 @@ $("#addAdmin").onclick = () => aguard(async () => {
   }
   await db(`admins/${j.localId}`, "PUT", email, true);
   $("#aEmail").value = ""; $("#aPw").value = "";
-  amsg("Admin created. They can log in now.", true);
+  let note = "Admin created.";
+  try { await sendPasswordReset(email); note += " A password reset email was sent to " + email + " so they can set their own password."; }
+  catch (e) { note += " The reset email failed (" + e.message + "), so use Send reset next to their name."; }
+  amsg(note, true);
 });
 $("#addUid").onclick = () => aguard(async () => {
   const uid = $("#aUid").value.trim(), label = $("#aLabel").value.trim() || "Admin";
@@ -239,6 +256,15 @@ async function showPanel() {
   loadAdmins().catch(e => amsg(e.message));
   load(); clearInterval(timer); timer = setInterval(() => load().catch(() => {}), 5000);
 }
+$("#forgot").onclick = async e => {
+  e.preventDefault();
+  const email = $("#email").value.trim(), m = $("#loginMsg");
+  if (!email) { m.className = "msg err"; m.textContent = "Type your admin email above first, then click Forgot password."; return; }
+  try {
+    await sendPasswordReset(email);
+    m.className = "msg ok"; m.textContent = "A reset link is on its way to " + email + ". Check spam if you don't see it.";
+  } catch (err) { m.className = "msg err"; m.textContent = err.message; }
+};
 $("#loginBtn").onclick = async () => {
   try { await adminLogin($("#email").value.trim(), $("#pw").value); $("#loginMsg").textContent = ""; await showPanel(); }
   catch (e) { $("#loginMsg").textContent = e.message; }
