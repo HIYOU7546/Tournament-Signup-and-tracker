@@ -1,6 +1,31 @@
 const $ = s => document.querySelector(s);
 const DB = CONFIG.databaseUrl.replace(/\/$/, "");
 
+// Text shown on the sign-up page. Admins can change any of these on the Edit Text page.
+const TEXT_DEFAULTS = {
+  tabOp: "Open Play",
+  tabTour: "Tournament Sign-Up",
+  opHeading: "Open Play Sign Up",
+  opIntro: "Add up to 4 players. You'll be placed at the end of the line.",
+  opP1: "Player 1 (required)",
+  opP2: "Player 2 (optional)",
+  opP3: "Player 3 (optional)",
+  opP4: "Player 4 (optional)",
+  opButton: "Join the line",
+  opSuccess: "You're in line!",
+  opLineHeading: "The Line",
+  opEmpty: "Nobody in line yet.",
+  opLoginHeading: "Sign in to join the line",
+  opLoginIntro: "Use your @{domain} Google account.",
+  tourHeading: "Tournament Sign Up",
+  tourIntro: "",
+  tourLoginHeading: "Sign in to continue",
+  tourLoginIntro: "This form needs your @{domain} Google account.",
+  tourClosed: "Tournament sign-ups are not active right now.",
+  closed: "Sign-ups are currently closed. Check back soon!"
+};
+let TEXT = { ...TEXT_DEFAULTS };
+
 function nav(active) {
   const links = [["index.html", "Sign Up"], ["brackets.html", "Brackets"], ["qr.html", "QR Code"], ["admin.html", "Admin"]];
   const n = document.createElement("nav");
@@ -12,8 +37,12 @@ function nav(active) {
   });
   document.body.prepend(n);
   // During a tournament the Sign Up link disappears entirely.
-  db("settings/tournamentMode").then(v => {
-    if (v === true) { const l = n.querySelector('a[href="index.html"]'); if (l) l.remove(); }
+  // The Sign Up link only disappears when a tournament is running AND tournament sign-up is off.
+  db("settings").then(st => {
+    st = st || {};
+    if (st.tournamentMode === true && st.tournamentSignupEnabled !== true) {
+      const l = n.querySelector('a[href="index.html"]'); if (l) l.remove();
+    }
   }).catch(() => {});
 }
 
@@ -29,7 +58,7 @@ async function db(path, method = "GET", body, auth = false) {
     if (res.status === 401) {
       if (auth === "player") {
         playerLogout();
-        throw new Error("Your sign-in expired or isn't allowed. Please sign in again with your @" + SCHOOL_DOMAIN + " account.");
+        throw new Error("Your sign-in expired or isn't allowed. Please sign in again with your " + domainWord() + " account.");
       }
       if (auth) throw new Error("Permission denied. Either your login expired (log out and back in) or the admin email in the database rules doesn't match yours.");
       throw new Error("Permission denied by the database rules.");
@@ -50,11 +79,20 @@ async function getQueue() {
 async function signup(players, useLogin = false) {
   if (players.length < 1 || players.length > 4) throw new Error("Enter 1 to 4 player names.");
   if (players.some(p => p.length > 30)) throw new Error("Names must be 30 characters or less.");
+  // Word filter: checked right here, immediately before anything is sent to the database.
+  // If words.js didn't load we refuse to send, so the filter can never be silently skipped.
+  if (typeof containsBlockedWord !== "function") {
+    console.error("words.js did not load, so sign-ups are paused.");
+    throw new Error("The word filter didn't load. Please refresh the page and try again.");
+  }
+  if (players.some(p => containsBlockedWord(p))) {
+    throw new Error("One of the names isn't allowed. Please use school-appropriate names.");
+  }
   const now = Date.now();
   const entry = { players, order: now, signedUpAt: now };
   if (!useLogin) return db("queue", "POST", entry);
   const sess = playerSession();
-  if (!sess) throw new Error("Please sign in again with your @" + SCHOOL_DOMAIN + " account.");
+  if (!sess) throw new Error("Please sign in again with your " + domainWord() + " account.");
   // One atomic write: the public queue entry + a private record of who signed up (admins only).
   const key = "s" + now.toString(36) + Math.random().toString(36).slice(2, 8);
   return db("", "PATCH", {
@@ -64,7 +102,17 @@ async function signup(players, useLogin = false) {
 }
 
 // ---- Player (Google) sign-in ----
-const SCHOOL_DOMAIN = "hamiltonschools.us";
+// Which email addresses may sign in. Admins change this on the Admin page (settings/emailDomain).
+// "*" means any Google account. Until a setting is saved, it stays hamiltonschools.us.
+const DEFAULT_DOMAIN = "hamiltonschools.us";
+let SCHOOL_DOMAIN = DEFAULT_DOMAIN;
+const anyDomain = () => SCHOOL_DOMAIN === "*";
+const domainWord = () => anyDomain() ? "Google" : "@" + SCHOOL_DOMAIN;
+function setDomain(d) { SCHOOL_DOMAIN = (typeof d === "string" && d.trim() ? d.trim().toLowerCase() : DEFAULT_DOMAIN); }
+// Fills {domain} in editable text. "@{domain} " disappears when any account is allowed.
+function fillDomain(str) {
+  return String(str).replace(/@\{domain\} ?/g, anyDomain() ? "" : "@" + SCHOOL_DOMAIN + " ").replace(/\{domain\}/g, anyDomain() ? "any" : SCHOOL_DOMAIN);
+}
 
 function playerSession() {
   const t = sessionStorage.getItem("ptoken");
@@ -94,8 +142,9 @@ async function googleSignIn(credential) {
   }
   if (!j.idToken) throw new Error("This email already has a different kind of login. Try another account.");
   const email = (j.email || "").toLowerCase();
-  if (!j.emailVerified || !email.endsWith("@" + SCHOOL_DOMAIN)) {
-    throw new Error("Please sign in with your @" + SCHOOL_DOMAIN + " account.");
+  try { setDomain(await db("settings/emailDomain")); } catch {}
+  if (!j.emailVerified || (!anyDomain() && !email.endsWith("@" + SCHOOL_DOMAIN))) {
+    throw new Error("Please sign in with your " + domainWord() + " account.");
   }
   sessionStorage.setItem("ptoken", j.idToken);
   sessionStorage.setItem("pemail", email);
@@ -148,7 +197,7 @@ function renderQueue(el, queue, handlers, whoMap = {}) {
   if (!handlers) queue = queue.filter(e => !e.hidden); // public view never shows hidden entries
   if (!queue.length) {
     const p = document.createElement("p");
-    p.className = "muted"; p.textContent = "Nobody in line yet.";
+    p.className = "muted"; p.textContent = TEXT.opEmpty;
     el.appendChild(p); return;
   }
   queue.forEach((e, i) => {

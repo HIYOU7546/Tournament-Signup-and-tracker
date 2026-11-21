@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Edit Sign-Up Text</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="form.css">
+<link rel="icon" type="image/svg+xml" href="images/favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32.png">
+<link rel="icon" href="images/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="images/apple-touch-icon.png">
+<style>
+  .grid{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:16px;align-items:start}
+  @media (max-width:900px){.grid{grid-template-columns:1fr}}
+  .grp h3{margin:18px 0 4px;font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+  .grp h3:first-child{margin-top:0}
+  .grp label{display:block;font-size:.85rem;color:var(--muted);margin-top:10px}
+  .sticky{position:sticky;top:12px}
+</style>
+</head><body>
+<main class="wide" style="max-width:1100px">
+  <p style="margin-bottom:0"><a href="admin.html" style="color:var(--brand)">&larr; Back to Admin</a></p>
+  <h1>Edit sign-up text</h1>
+  <p class="muted">Change what the sign-up page says. Leave a box empty to use the default (shown faintly inside the box).</p>
+
+  <div class="card" id="needLogin" hidden>
+    <h2>Admin login needed</h2>
+    <p>Please <a href="admin.html" style="color:var(--brand)">log in on the Admin page</a> first, then come back here.</p>
+  </div>
+
+  <div class="grid" id="panel" hidden>
+    <div class="card grp" id="fields"></div>
+    <div class="sticky">
+      <div class="card">
+        <h2 style="font-size:1rem">Open play preview</h2>
+        <h2 id="pvHeading" style="margin:6px 0 4px"></h2>
+        <p class="muted" id="pvIntro" style="margin:0 0 8px"></p>
+        <input id="pv1" disabled><input id="pv2" disabled><input id="pv3" disabled><input id="pv4" disabled>
+        <button id="pvBtn" disabled></button>
+        <h3 style="margin:16px 0 4px" id="pvLine"></h3>
+        <p class="muted" id="pvEmpty" style="margin:0"></p>
+      </div>
+      <div class="card">
+        <button id="saveBtn" style="width:100%">Save changes</button>
+        <button id="resetBtn" class="gray" style="width:100%;margin-top:8px">Reset everything to defaults</button>
+        <div id="msg" class="msg"></div>
+      </div>
+    </div>
+  </div>
+</main>
+<script src="config.js"></script><script src="app.js"></script>
+<script>
+nav("admin.html");
+
+const GROUPS = [
+  ["Tabs (shown when both sign-ups are open)", [["tabOp", "Open play tab"], ["tabTour", "Tournament tab"]]],
+  ["Open play sign-up", [
+    ["opHeading", "Heading"], ["opIntro", "Intro text"],
+    ["opP1", "Player 1 box"], ["opP2", "Player 2 box"], ["opP3", "Player 3 box"], ["opP4", "Player 4 box"],
+    ["opButton", "Button"], ["opSuccess", "Message after joining"],
+    ["opLineHeading", "Line heading"], ["opEmpty", "Message when the line is empty"]]],
+  ["Open play sign-in", [["opLoginHeading", "Heading"], ["opLoginIntro", "Text under the heading"]]],
+  ["Tournament sign-up", [
+    ["tourHeading", "Heading"], ["tourIntro", "Intro text (optional)"],
+    ["tourClosed", "Message when tournament sign-up is closed"], ["tourLoginHeading", "Sign-in heading"], ["tourLoginIntro", "Sign-in text"]]],
+  ["When everything is closed", [["closed", "Message"]]]
+];
+
+if (!sessionStorage.getItem("token")) $("#needLogin").hidden = false;
+else boot();
+
+const inputs = {};
+async function boot() {
+  $("#panel").hidden = false;
+  let saved = {};
+  try { saved = (await db("settings/text")) || {}; } catch (e) { $("#msg").className = "msg err"; $("#msg").textContent = e.message; }
+  const box = $("#fields");
+  GROUPS.forEach(([title, items]) => {
+    box.appendChild(Object.assign(document.createElement("h3"), { textContent: title }));
+    items.forEach(([key, label]) => {
+      const l = document.createElement("label"); l.textContent = label; l.htmlFor = "f_" + key;
+      const i = document.createElement("input");
+      i.id = "f_" + key; i.placeholder = TEXT_DEFAULTS[key] || "(empty)"; i.maxLength = 300; i.autocomplete = "off";
+      i.value = saved[key] || ""; i.oninput = preview;
+      inputs[key] = i; box.append(l, i);
+    });
+  });
+  preview();
+}
+
+const val = k => (inputs[k].value.trim() || TEXT_DEFAULTS[k]);
+function preview() {
+  $("#pvHeading").textContent = val("opHeading");
+  $("#pvIntro").textContent = val("opIntro");
+  ["pv1", "pv2", "pv3", "pv4"].forEach((id, n) => $("#" + id).placeholder = val("opP" + (n + 1)));
+  $("#pvBtn").textContent = val("opButton");
+  $("#pvLine").textContent = val("opLineHeading");
+  $("#pvEmpty").textContent = val("opEmpty");
+}
+
+$("#saveBtn").onclick = async () => {
+  const m = $("#msg"), out = {};
+  Object.keys(inputs).forEach(k => {
+    const v = inputs[k].value.trim();
+    if (v && v !== TEXT_DEFAULTS[k]) out[k] = v;
+  });
+  try {
+    if (Object.keys(out).length) await db("settings/text", "PUT", out, true);
+    else await db("settings/text", "DELETE", undefined, true);
+    m.className = "msg ok"; m.textContent = "Saved. The sign-up page updates within about 20 seconds.";
+  } catch (e) { m.className = "msg err"; m.textContent = e.message; }
+};
+$("#resetBtn").onclick = async () => {
+  if (!confirm("Clear all your changes and go back to the default text?")) return;
+  Object.values(inputs).forEach(i => i.value = "");
+  preview();
+  try { await db("settings/text", "DELETE", undefined, true); $("#msg").className = "msg ok"; $("#msg").textContent = "Back to the default text."; }
+  catch (e) { $("#msg").className = "msg err"; $("#msg").textContent = e.message; }
+};
+</script></body></html>

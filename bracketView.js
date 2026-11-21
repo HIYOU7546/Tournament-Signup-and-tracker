@@ -1,6 +1,78 @@
 // Draws a tournament (built with bracket.js) into a page element.
 // opts (admin only): onSave(matchId, p1, p2, s1, s2) -> Promise, onClear(matchId) -> Promise
 
+const LINE_COLORS = { gold: "#f2b705", white: "#f5f1e6", gray: "#8a8f98", red: "#e5484d", blue: "#4aa3ff", green: "#5fd068" };
+
+// SVG path for one connector. kind: elbow | rounded | curve | diagonal.
+// stub=false leaves off the final horizontal run (so two feeders don't draw it twice).
+function _linePath(kind, x1, y1, x2, y2, stub = true) {
+  const xm = (x1 + x2) / 2, dy = y2 - y1;
+  if (kind === "diagonal") return `M${x1},${y1} L${x2},${y2}`;
+  if (kind === "curve") return `M${x1},${y1} C${xm},${y1} ${xm},${y2} ${x2},${y2}`;
+  if (Math.abs(dy) < 0.5) return stub ? `M${x1},${y1} H${x2}` : `M${x1},${y1} H${xm}`;
+  if (kind === "rounded") {
+    const r = Math.max(0, Math.min(10, Math.abs(dy) / 2, (x2 - x1) / 2)), s = dy > 0 ? 1 : -1;
+    return `M${x1},${y1} H${xm - r} Q${xm},${y1} ${xm},${y1 + s * r} V${y2 - s * r} Q${xm},${y2} ${xm + r},${y2}` + (stub ? ` H${x2}` : "");
+  }
+  return `M${x1},${y1} H${xm} V${y2}` + (stub ? ` H${x2}` : "");
+}
+
+function _lineStyle(t) {
+  return {
+    kind: t.lineStyle || "elbow",
+    pattern: t.linePattern || "solid",
+    width: t.lineWidth || 2,
+    color: LINE_COLORS[t.lineColor] || LINE_COLORS.gold
+  };
+}
+
+// Draws the connector lines for one winners/losers/single bracket section.
+function _drawLines(row, cardOf, st, s) {
+  const old = row.querySelector("svg.bl-lines");
+  if (old) old.remove();
+  if (s.kind === "none") return;
+  const cr = row.getBoundingClientRect();
+  if (!cr.width) return; // not visible yet; the ResizeObserver redraws when it is
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("class", "bl-lines");
+  svg.setAttribute("width", row.scrollWidth);
+  svg.setAttribute("height", row.scrollHeight);
+  const pos = el => {
+    const r = el.getBoundingClientRect();
+    return { l: r.left - cr.left + row.scrollLeft, r: r.right - cr.left + row.scrollLeft, y: (r.top + r.bottom) / 2 - cr.top + row.scrollTop };
+  };
+  for (const id of st.order) {
+    const to = cardOf[id];
+    if (!to || to.classList.contains("empty")) continue;
+    const tp = pos(to), m = st.matches[id];
+    let stub = true;
+    [m.p1, m.p2].forEach(src => {
+      const from = src && src.win ? cardOf[src.win] : null;
+      if (!from || from.classList.contains("empty")) return;
+      const fp = pos(from);
+      const p = document.createElementNS(ns, "path");
+      p.setAttribute("d", _linePath(s.kind, fp.r, fp.y, tp.l, tp.y, stub));
+      stub = false;
+      p.setAttribute("fill", "none");
+      p.setAttribute("stroke", s.color);
+      p.setAttribute("stroke-width", s.width);
+      p.setAttribute("stroke-linejoin", "round");
+      if (s.pattern === "dashed") p.setAttribute("stroke-dasharray", `${s.width * 3 + 4} ${s.width * 2 + 3}`);
+      if (s.pattern === "dotted") { p.setAttribute("stroke-dasharray", `0.1 ${s.width * 2 + 3}`); p.setAttribute("stroke-linecap", "round"); }
+      svg.appendChild(p);
+    });
+  }
+  row.appendChild(svg);
+}
+
+function _attachLines(row, cardOf, st, s) {
+  if (s.kind === "none") return;
+  const draw = () => _drawLines(row, cardOf, st, s);
+  (window.requestAnimationFrame || (f => setTimeout(f, 0)))(draw);
+  if (window.ResizeObserver) new ResizeObserver(draw).observe(row);
+}
+
 const TYPE_LABELS = { se: "Single elimination", de: "Double elimination", rr: "Round robin" };
 
 async function getTournaments() {
@@ -11,7 +83,17 @@ async function getTournaments() {
     name: v.name,
     type: v.type,
     third: v.third === true,
+    gf: typeof v.gf === "number" ? v.gf : 2,
+    iter: typeof v.iter === "number" ? v.iter : 1,
+    showSeeds: v.showSeeds === true,
+    lineStyle: v.lineStyle || "elbow",
+    linePattern: v.linePattern || "solid",
+    lineWidth: typeof v.lineWidth === "number" ? v.lineWidth : 2,
+    lineColor: v.lineColor || "gold",
+    sport: v.sport || "",
+    description: v.description || "",
     order: v.order || 0,
+    hidden: v.hidden === true,
     participants: Array.isArray(v.participants) ? v.participants : Object.values(v.participants || {}),
     results: v.results || {}
   })).sort((a, b) => a.order - b.order);
@@ -46,11 +128,16 @@ function _matchCard(o, opts) {
       if (o.winner === k) row.classList.add("win");
       else if (o.winner) row.classList.add("lose");
     }
-    row.appendChild(_el("span", "nm", name === null ? "TBD" : name === BYE ? "BYE" : name));
+    const nm = _el("span", "nm");
+    const sd = opts.seedOf && name !== null && name !== BYE ? opts.seedOf(name) : 0;
+    if (sd) nm.appendChild(_el("span", "seed", String(sd)));
+    nm.appendChild(document.createTextNode(name === null ? "TBD" : name === BYE ? "BYE" : name));
+    row.appendChild(nm);
     if (canEdit) {
       const inp = document.createElement("input");
       inp.type = "number"; inp.min = "0"; inp.step = "any"; inp.inputMode = "decimal";
-      inp.value = o.done ? String(o["s" + k]) : "";
+      inp.value = o.done ? String(o["s" + k]) : "0";   // scores start at 0
+      inp.onfocus = () => inp.select();                // typing replaces the 0
       inputs.push(inp); row.appendChild(inp);
     } else if (o.done && !o.bye) {
       row.appendChild(_el("span", "sc", String(o["s" + k])));
@@ -88,7 +175,11 @@ function renderBracket(host, t, opts = {}) {
   const keep = Array.from(host.querySelectorAll(".rounds")).map(e => e.scrollLeft);
   const r = Bracket.resolve(t);
   const st = r.structure;
-  opts = { ...opts, noTies: st.kind !== "rr" };
+  opts = {
+    ...opts,
+    noTies: st.kind !== "rr",
+    seedOf: t.showSeeds ? (n => t.participants.indexOf(n) + 1) : null
+  };
   host.replaceChildren();
 
   if (r.champion) host.appendChild(_el("div", "champ", "🏆 Champion: " + r.champion));
@@ -107,6 +198,7 @@ function renderBracket(host, t, opts = {}) {
     wrap.appendChild(tbl); host.appendChild(wrap);
   }
 
+  const lineJobs = [];
   st.sections.forEach(sec => {
     const sc = _el("div", "bsec");
     sc.appendChild(_el("h3", "", sec.title));
@@ -123,18 +215,24 @@ function renderBracket(host, t, opts = {}) {
       });
       sc.appendChild(box);
     } else {
-      const row = _el("div", "rounds");
+      const row = _el("div", "rounds"), cardOf = {};
       rounds.forEach(rd => {
         const col = _el("div", "round");
         col.appendChild(_el("div", "rtitle", rd.name));
         const ms = _el("div", "rmatches");
-        rd.ids.forEach(id => ms.appendChild(_matchCard(r.out[id], opts)));
+        rd.ids.forEach(id => {
+          const slot = _el("div", "mslot"), card = _matchCard(r.out[id], opts);
+          slot.appendChild(card); ms.appendChild(slot); cardOf[id] = card;
+        });
         col.appendChild(ms); row.appendChild(col);
       });
       sc.appendChild(row);
+      lineJobs.push({ row, cardOf });
     }
     host.appendChild(sc);
   });
 
   host.querySelectorAll(".rounds").forEach((e, i) => { if (keep[i]) e.scrollLeft = keep[i]; });
+  const ls = _lineStyle(t);
+  lineJobs.forEach(j => _attachLines(j.row, j.cardOf, st, ls));
 }

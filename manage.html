@@ -10,72 +10,197 @@
 <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
 </head><body>
 <main class="wide">
-  <h1>Manage Brackets</h1>
-  <p><a href="admin.html" style="color:var(--brand)">&larr; Back to Admin</a></p>
+  <p style="margin-bottom:0"><a href="admin.html" style="color:var(--brand)">&larr; Back to Admin</a></p>
 
   <div class="card" id="needLogin" hidden>
     <h2>Admin login needed</h2>
     <p>Please <a href="admin.html" style="color:var(--brand)">log in on the Admin page</a> first, then come back here.</p>
   </div>
 
-  <div id="panel" hidden>
+  <!-- ===== List of brackets ===== -->
+  <div id="listView" hidden>
+    <h1>Manage Brackets</h1>
     <div class="card">
-      <h2>Create a bracket</h2>
-      <input id="tName" placeholder="Bracket name (e.g. Mario Kart Friday)" maxlength="60">
-      <select id="tType">
-        <option value="se">Single elimination</option>
-        <option value="de">Double elimination</option>
-        <option value="rr">Round robin</option>
-      </select>
-      <label id="thirdWrap" style="display:flex;gap:10px;align-items:center;margin:6px 0;cursor:pointer">
-        <input type="checkbox" id="tThird" style="width:auto;margin:0"><span>Include a third-place match</span>
-      </label>
-      <textarea id="tPlayers" placeholder="Players, one per line. Seed 1 is the first name."></textarea>
-      <label style="display:flex;gap:10px;align-items:center;margin:6px 0;cursor:pointer">
-        <input type="checkbox" id="tShuffle" style="width:auto;margin:0"><span>Randomize the seeding</span>
-      </label>
-      <button id="createBtn">Create bracket</button>
-      <div id="cMsg" class="msg"></div>
-    </div>
-
-    <div class="card">
-      <h2>Your brackets</h2>
-      <div id="tlist"></div>
-    </div>
-
-    <div class="card" id="viewCard" hidden>
-      <h2 id="vtitle"></h2>
-      <p class="muted" id="vsub"></p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-        <button class="gray small" id="resetBtn">Reset all scores</button>
-        <button class="bad small" id="delBtn">Delete this bracket</button>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+        <h2 style="margin:0">Your brackets</h2>
+        <button id="newBtn">+ Create bracket</button>
       </div>
-      <p class="muted">Enter both scores and click Save. The winner moves on automatically. Clear a result to undo it, and anything that depended on it is undone too.</p>
-      <div id="vbody"></div>
+      <div id="tlist"></div>
+      <div id="listMsg" class="msg err"></div>
+    </div>
+  </div>
+
+  <!-- ===== Editor (Bracket HQ style) ===== -->
+  <div id="editor" hidden>
+    <div class="ed-top">
+      <button class="gray small" id="backBtn">&larr; All brackets</button>
+      <div class="ed-title" id="topTitle">Untitled Bracket</div>
+      <span class="muted" id="unsaved"></span>
+      <button id="saveBtn">Save Bracket</button>
+    </div>
+    <div id="saveMsg" class="msg"></div>
+
+    <div class="ed-wrap" id="edWrap">
+      <aside class="ed-panel">
+        <div class="ed-tabs">
+          <button data-tab="info">Bracket Information</button>
+          <button data-tab="players">Participants</button>
+          <button data-tab="settings">Settings</button>
+        </div>
+
+        <!-- Bracket Information -->
+        <section class="ed-pane" data-pane="info">
+          <h3>Bracket Information</h3>
+          <label class="f" for="fName">Bracket Name</label>
+          <input id="fName" maxlength="60" placeholder="Untitled Bracket">
+          <label class="f" for="fType">Bracket Type</label>
+          <select id="fType">
+            <option value="se">Single Elimination</option>
+            <option value="de">Double Elimination</option>
+            <option value="rr">Round Robin</option>
+          </select>
+          <label class="f" for="fSport">Sport / Game</label>
+          <input id="fSport" maxlength="60" placeholder="e.g. Mario Kart">
+          <label class="f" for="fDesc">Bracket Description</label>
+          <textarea id="fDesc" maxlength="300"></textarea>
+
+          <h3>Bracket Status</h3>
+          <div><strong id="stLabel">Pending</strong> <span class="muted" id="stPct"></span></div>
+          <div class="pbar"><div id="stBar"></div></div>
+          <p class="lock" id="stHint">Save the bracket, then enter scores in the preview.</p>
+          <div class="pbtns">
+            <button class="gray small" id="resetBtn">Reset Bracket</button>
+            <button class="bad small" id="delBtn">Delete Bracket</button>
+          </div>
+        </section>
+
+        <!-- Participants -->
+        <section class="ed-pane" data-pane="players" hidden>
+          <h3>Participants</h3>
+          <div class="muted" id="pCount"></div>
+          <div id="plist"></div>
+          <div class="pbtns">
+            <button class="small" id="addP">+ Add Participant</button>
+            <button class="small gray" id="bulkBtn">+ Bulk Add Participants</button>
+            <button class="small gray" id="shuffleBtn">Randomize seeding</button>
+          </div>
+          <div id="bulk" hidden style="margin-top:10px">
+            <textarea id="bulkText" placeholder="One name per line"></textarea>
+            <button class="small" id="bulkAdd">Add these names</button>
+          </div>
+          <div id="pMsg" class="msg err"></div>
+          <p class="lock" id="lockNote" hidden>Scores have been entered, so participants can't be changed. Use Reset Bracket on the Information tab to make changes.</p>
+        </section>
+
+        <!-- Settings -->
+        <section class="ed-pane" data-pane="settings" hidden>
+          <div id="setSe">
+            <h3>Single Elimination Settings</h3>
+            <label class="ed-opt"><input type="checkbox" id="sThird"><span>Third place game (between the semifinal losers)</span></label>
+          </div>
+          <div id="setDe" hidden>
+            <h3>Double Elimination Settings</h3>
+            <label class="f" for="sGf">Grand Finals</label>
+            <select id="sGf">
+              <option value="2">2 Games (default): includes a rematch if the losers bracket winner wins</option>
+              <option value="1">1 Game: no rematch</option>
+              <option value="0">None: no grand final</option>
+            </select>
+          </div>
+          <div id="setRr" hidden>
+            <h3>Round Robin Settings</h3>
+            <label class="f" for="sIter">Iterations</label>
+            <select id="sIter">
+              <option value="1">Single: everyone plays everyone once</option>
+              <option value="2">Double: twice</option>
+              <option value="3">Triple: three times</option>
+            </select>
+          </div>
+          <p class="lock" id="lockNote2" hidden>These can't be changed after scores are entered. Use Reset Bracket to change them.</p>
+          <h3>Display Settings</h3>
+          <label class="ed-opt"><input type="checkbox" id="sSeeds"><span>Show seeds</span></label>
+          <div id="lineSet">
+            <h3>Lines</h3>
+            <label class="f" for="sLineStyle">Line style</label>
+            <select id="sLineStyle">
+              <option value="elbow">Elbow (square corners)</option>
+              <option value="rounded">Rounded corners</option>
+              <option value="curve">Curved</option>
+              <option value="diagonal">Diagonal</option>
+              <option value="none">No lines</option>
+            </select>
+            <label class="f" for="sLinePattern">Line pattern</label>
+            <select id="sLinePattern">
+              <option value="solid">Solid</option>
+              <option value="dashed">Dashed</option>
+              <option value="dotted">Dotted</option>
+            </select>
+            <label class="f" for="sLineWidth">Line thickness</label>
+            <select id="sLineWidth">
+              <option value="1">Thin</option>
+              <option value="2">Medium</option>
+              <option value="3">Thick</option>
+              <option value="4">Extra thick</option>
+            </select>
+            <label class="f" for="sLineColor">Line color</label>
+            <select id="sLineColor">
+              <option value="gold">Gold</option>
+              <option value="white">White</option>
+              <option value="gray">Gray</option>
+              <option value="red">Red</option>
+              <option value="blue">Blue</option>
+              <option value="green">Green</option>
+            </select>
+          </div>
+        </section>
+      </aside>
+
+      <section class="ed-preview">
+        <div class="ed-prevhead">
+          <strong>Preview</strong>
+          <span class="muted" id="prevNote"></span>
+        </div>
+        <div style="text-align:right;margin-bottom:6px"><button class="gray small" id="collapseBtn">Collapse panel</button></div>
+        <div id="preview"></div>
+      </section>
     </div>
   </div>
 </main>
 <script src="config.js"></script><script src="app.js"></script>
-<script src="bracket.js"></script><script src="bracket-view.js"></script>
+<script src="bracket.js"></script><script src="bracketView.js"></script>
 <script>
 nav("admin.html");
-let list = [], sel = null;
-const msg = (t, ok) => { const m = $("#cMsg"); m.className = "msg " + (ok ? "ok" : "err"); m.textContent = t || ""; };
 
+const MIN = t => (t === "de" ? 3 : 2);
+const MAX = t => (t === "rr" ? 24 : 64);
+const blank = () => ({ id: null, name: "", type: "se", sport: "", description: "", participants: ["", "", "", ""],
+  third: false, gf: 2, iter: 1, showSeeds: true, lineStyle: "elbow", linePattern: "solid", lineWidth: 2, lineColor: "gold", results: {}, order: 0 });
+
+let list = [], draft = null, structDirty = false, tab = "info", previewTimer = null;
+
+function setMsg(el, text, ok) { el.className = "msg " + (ok ? "ok" : "err"); el.textContent = text || ""; }
+const isStarted = () => Object.keys(draft.results).length > 0;
+
+// ---------- start ----------
 if (!sessionStorage.getItem("token")) $("#needLogin").hidden = false;
-else { $("#panel").hidden = false; reload(); }
+else boot();
 
-function selected() { return list.find(t => t.id === sel) || null; }
-
-async function reload() {
-  try { list = await getTournaments(); } catch (e) { msg(e.message); return; }
-  if (!selected()) sel = null;
-  renderList(); renderView();
+async function boot() {
+  try { list = await getTournaments(); } catch (e) { $("#listView").hidden = false; setMsg($("#listMsg"), e.message); return; }
+  const h = decodeURIComponent(location.hash.slice(1));
+  const t = list.find(x => x.id === h);
+  if (h === "new") openNew(); else if (t) openEditor(t); else showList();
 }
 
+// ---------- list ----------
+function showList() {
+  $("#editor").hidden = true; $("#listView").hidden = false;
+  history.replaceState(null, "", location.pathname);
+  renderList();
+}
 function renderList() {
   const el = $("#tlist"); el.replaceChildren();
-  if (!list.length) { const p = document.createElement("p"); p.className = "muted"; p.textContent = "No brackets yet."; el.appendChild(p); return; }
+  if (!list.length) { const p = document.createElement("p"); p.className = "muted"; p.textContent = "No brackets yet. Click Create bracket to make one."; el.appendChild(p); return; }
   list.forEach(t => {
     const row = document.createElement("div"); row.className = "trow";
     const info = document.createElement("div"); info.className = "info";
@@ -83,62 +208,215 @@ function renderList() {
     const s = document.createElement("div"); s.className = "muted";
     s.textContent = `${TYPE_LABELS[t.type] || t.type} · ${t.participants.length} players · ${tournamentStatus(t)}`;
     info.append(n, s);
-    const open = document.createElement("button"); open.className = "small"; open.textContent = t.id === sel ? "Open ✓" : "Open";
-    open.onclick = () => { sel = t.id; renderList(); renderView(); $("#viewCard").scrollIntoView({ behavior: "smooth" }); };
+    const open = document.createElement("button"); open.className = "small"; open.textContent = "Open";
+    open.onclick = () => openEditor(t);
     row.append(info, open); el.appendChild(row);
   });
 }
+async function refreshList() { list = await getTournaments(); renderList(); }
+$("#newBtn").onclick = () => openNew();
 
-function renderView() {
-  const t = selected();
-  $("#viewCard").hidden = !t;
-  if (!t) return;
-  $("#vtitle").textContent = t.name;
-  $("#vsub").textContent = (TYPE_LABELS[t.type] || t.type) + " · " + t.participants.length + " players";
-  renderBracket($("#vbody"), t, {
-    onSave: async (id, a, b, s1, s2) => { await db(`tournaments/${t.id}/results/${id}`, "PUT", { a, b, s1, s2 }, true); await reload(); },
-    onClear: async id => { await db(`tournaments/${t.id}/results/${id}`, "DELETE", undefined, true); await reload(); }
-  });
+// ---------- open editor ----------
+function openNew() { draft = blank(); structDirty = false; history.replaceState(null, "", "#new"); showEditor(); }
+function openEditor(t) {
+  draft = { ...blank(), ...t, participants: [...t.participants], results: { ...t.results } };
+  structDirty = false; history.replaceState(null, "", "#" + t.id); showEditor();
+}
+function showEditor() {
+  $("#listView").hidden = true; $("#editor").hidden = false;
+  $("#fName").value = draft.name; $("#fType").value = draft.type;
+  $("#fSport").value = draft.sport; $("#fDesc").value = draft.description;
+  $("#sThird").checked = draft.third; $("#sGf").value = String(draft.gf);
+  $("#sIter").value = String(draft.iter); $("#sSeeds").checked = draft.showSeeds;
+  $("#sLineStyle").value = draft.lineStyle; $("#sLinePattern").value = draft.linePattern;
+  $("#sLineWidth").value = String(draft.lineWidth); $("#sLineColor").value = draft.lineColor;
+  syncLineControls();
+  $("#topTitle").textContent = draft.name.trim() || "Untitled Bracket";
+  $("#saveBtn").textContent = draft.id ? "Save Changes" : "Save Bracket";
+  $("#unsaved").textContent = ""; setMsg($("#saveMsg"), "");
+  refreshAll(); showTab(tab);
+}
+function refreshAll() { applyLocks(); renderPlayers(); drawStatus(); drawPreview(); }
+
+// ---------- tabs ----------
+function showTab(name) {
+  tab = name;
+  document.querySelectorAll("[data-pane]").forEach(p => p.hidden = p.dataset.pane !== name);
+  document.querySelectorAll("[data-tab]").forEach(b => b.classList.toggle("on", b.dataset.tab === name));
+}
+document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+$("#collapseBtn").onclick = () => {
+  const c = $("#edWrap").classList.toggle("collapsed");
+  $("#collapseBtn").textContent = c ? "Expand panel" : "Collapse panel";
+};
+$("#backBtn").onclick = () => { if (!structDirty || confirm("Leave without saving your changes?")) showList(); };
+
+// ---------- change tracking ----------
+function changed(structural) {
+  $("#unsaved").textContent = "Unsaved changes";
+  if (structural) structDirty = true;
+  clearTimeout(previewTimer); previewTimer = setTimeout(() => { drawStatus(); drawPreview(); }, 120);
+}
+$("#fName").oninput = e => { draft.name = e.target.value; $("#topTitle").textContent = draft.name.trim() || "Untitled Bracket"; changed(false); };
+$("#fSport").oninput = e => { draft.sport = e.target.value; changed(false); };
+$("#fDesc").oninput = e => { draft.description = e.target.value; changed(false); };
+$("#fType").onchange = e => { draft.type = e.target.value; applyLocks(); renderPlayers(); changed(true); };
+$("#sThird").onchange = e => { draft.third = e.target.checked; changed(true); };
+$("#sGf").onchange = e => { draft.gf = Number(e.target.value); changed(true); };
+$("#sIter").onchange = e => { draft.iter = Number(e.target.value); changed(true); };
+$("#sSeeds").onchange = e => { draft.showSeeds = e.target.checked; changed(false); };
+$("#sLineStyle").onchange = e => { draft.lineStyle = e.target.value; syncLineControls(); changed(false); };
+$("#sLinePattern").onchange = e => { draft.linePattern = e.target.value; changed(false); };
+$("#sLineWidth").onchange = e => { draft.lineWidth = Number(e.target.value); changed(false); };
+$("#sLineColor").onchange = e => { draft.lineColor = e.target.value; changed(false); };
+function syncLineControls() {
+  const none = draft.lineStyle === "none";
+  ["#sLinePattern", "#sLineWidth", "#sLineColor"].forEach(s => $(s).disabled = none);
 }
 
-$("#tType").onchange = () => { $("#thirdWrap").style.display = $("#tType").value === "se" ? "flex" : "none"; };
+function applyLocks() {
+  const locked = draft.id && isStarted();
+  ["#fType", "#sThird", "#sGf", "#sIter", "#addP", "#bulkBtn", "#bulkAdd", "#shuffleBtn"].forEach(s => $(s).disabled = !!locked);
+  $("#lockNote").hidden = !locked; $("#lockNote2").hidden = !locked;
+  $("#lineSet").hidden = draft.type === "rr"; // round robin has no connecting lines
+  $("#setSe").hidden = draft.type !== "se"; $("#setDe").hidden = draft.type !== "de"; $("#setRr").hidden = draft.type !== "rr";
+}
 
-$("#createBtn").onclick = async () => {
-  msg();
-  const name = $("#tName").value.trim(), type = $("#tType").value;
-  let players = $("#tPlayers").value.split("\n").map(s => s.trim()).filter(Boolean);
+// ---------- participants ----------
+function renderPlayers() {
+  const locked = draft.id && isStarted();
+  const box = $("#plist"); box.replaceChildren();
+  draft.participants.forEach((name, i) => {
+    const row = document.createElement("div"); row.className = "prow";
+    const sd = document.createElement("span"); sd.className = "pseed"; sd.textContent = i + 1;
+    const inp = document.createElement("input"); inp.value = name; inp.maxLength = 40; inp.placeholder = "Participant name"; inp.disabled = !!locked;
+    inp.oninput = () => { draft.participants[i] = inp.value; changed(true); };
+    const mk = (label, cls, fn, off) => { const b = document.createElement("button"); b.className = "small " + cls; b.textContent = label; b.disabled = !!off; b.onclick = fn; return b; };
+    const move = d => () => { const j = i + d, a = draft.participants; [a[i], a[j]] = [a[j], a[i]]; renderPlayers(); changed(true); };
+    row.append(sd, inp,
+      mk("↑", "gray", move(-1), locked || i === 0),
+      mk("↓", "gray", move(1), locked || i === draft.participants.length - 1),
+      mk("×", "bad", () => { draft.participants.splice(i, 1); renderPlayers(); changed(true); }, locked));
+    box.appendChild(row);
+  });
+  const n = draft.participants.map(s => s.trim()).filter(Boolean).length;
+  let size = 2; while (size < Math.max(n, 2)) size *= 2;
+  $("#pCount").textContent = `${n} participant${n === 1 ? "" : "s"}` + (draft.type === "rr" ? "" : ` · bracket size ${size}`) + ` · max ${MAX(draft.type)}`;
+}
+$("#addP").onclick = () => {
+  if (draft.participants.length >= MAX(draft.type)) { setMsg($("#pMsg"), "This bracket type allows up to " + MAX(draft.type) + " participants."); return; }
+  setMsg($("#pMsg"), ""); draft.participants.push(""); renderPlayers(); changed(true);
+  const ins = $("#plist").querySelectorAll("input"); ins[ins.length - 1].focus();
+};
+$("#bulkBtn").onclick = () => { $("#bulk").hidden = !$("#bulk").hidden; if (!$("#bulk").hidden) $("#bulkText").focus(); };
+$("#bulkAdd").onclick = () => {
+  const names = $("#bulkText").value.split("\n").map(s => s.trim()).filter(Boolean);
+  const keep = draft.participants.filter(s => s.trim());
+  const room = MAX(draft.type) - keep.length;
+  draft.participants = keep.concat(names.slice(0, Math.max(room, 0)));
+  setMsg($("#pMsg"), names.length > room ? `Only ${Math.max(room, 0)} fit. The rest were left out.` : "");
+  $("#bulkText").value = ""; $("#bulk").hidden = true; renderPlayers(); changed(true);
+};
+$("#shuffleBtn").onclick = () => {
+  const a = draft.participants.filter(s => s.trim());
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  draft.participants = a; renderPlayers(); changed(true);
+};
+
+// ---------- preview + status ----------
+function previewT() {
+  let names = draft.participants.map(s => s.trim()).filter(Boolean);
+  const seen = {};
+  names = names.map(n => { const k = n.toLowerCase(); seen[k] = (seen[k] || 0) + 1; return seen[k] > 1 ? `${n} (${seen[k]})` : n; });
+  let sample = false;
+  if (names.length < MIN(draft.type)) { names = ["Participant 1", "Participant 2", "Participant 3", "Participant 4"]; sample = true; }
+  return { sample, t: { type: draft.type, third: draft.third, gf: draft.gf, iter: draft.iter, showSeeds: draft.showSeeds,
+    lineStyle: draft.lineStyle, linePattern: draft.linePattern, lineWidth: draft.lineWidth, lineColor: draft.lineColor, participants: names, results: sample ? {} : draft.results } };
+}
+
+async function afterScore() {
+  const i = list.findIndex(x => x.id === draft.id);
+  if (i >= 0) list[i] = { ...list[i], results: { ...draft.results } };
+  applyLocks(); renderPlayers(); drawStatus(); drawPreview();
+}
+
+function drawPreview() {
+  const { t, sample } = previewT();
+  const canScore = !!draft.id && !structDirty && !sample;
+  $("#prevNote").textContent = sample ? "Sample preview. Add participants to see your bracket."
+    : !draft.id ? "Save the bracket to start entering scores."
+    : structDirty ? "Save your changes to enter scores." : "Enter scores below and click Save on each match.";
+  renderBracket($("#preview"), t, canScore ? {
+    onSave: async (id, a, b, s1, s2) => {
+      await db(`tournaments/${draft.id}/results/${id}`, "PUT", { a, b, s1, s2 }, true);
+      draft.results[id] = { a, b, s1, s2 }; await afterScore();
+    },
+    onClear: async id => {
+      await db(`tournaments/${draft.id}/results/${id}`, "DELETE", undefined, true);
+      delete draft.results[id]; await afterScore();
+    }
+  } : {});
+}
+
+function drawStatus() {
+  const { t, sample } = previewT();
+  let label = "Pending", pct = 0, hint = "";
+  if (!draft.id) { label = "Not saved yet"; hint = "Save the bracket, then enter scores in the preview."; }
+  else if (!sample) {
+    const r = Bracket.resolve(t);
+    label = r.champion ? "Complete" : r.doneCount ? "In progress" : "Pending";
+    pct = r.champion ? 100 : r.total ? Math.round(100 * r.doneCount / r.total) : 0;
+    hint = r.champion ? "Champion: " + r.champion : "";
+  }
+  $("#stLabel").textContent = label; $("#stPct").textContent = pct ? pct + "%" : "";
+  $("#stBar").style.width = pct + "%"; $("#stHint").textContent = hint;
+  $("#resetBtn").disabled = !(draft.id && isStarted());
+  $("#delBtn").hidden = !draft.id;
+}
+
+// ---------- save / reset / delete ----------
+$("#saveBtn").onclick = async () => {
+  const msg = $("#saveMsg"); setMsg(msg, "");
   try {
-    if (!name) throw new Error("Enter a bracket name.");
+    const name = draft.name.trim();
+    if (!name) { showTab("info"); $("#fName").focus(); throw new Error("Enter a bracket name."); }
+    const names = draft.participants.map(s => s.trim()).filter(Boolean);
     const seen = new Set();
-    for (const p of players) {
-      if (p.length > 40) throw new Error("Names must be 40 characters or less: " + p.slice(0, 20) + "...");
+    for (const p of names) {
       const k = p.toLowerCase();
-      if (seen.has(k)) throw new Error("Each name must be different. Duplicate: " + p);
+      if (seen.has(k)) { showTab("players"); throw new Error("Each name must be different. Duplicate: " + p); }
       seen.add(k);
     }
-    const min = type === "de" ? 3 : 2, max = type === "rr" ? 24 : 64;
-    if (players.length < min) throw new Error(type === "de" ? "Double elimination needs at least 3 players." : "This bracket needs at least 2 players.");
-    if (players.length > max) throw new Error("This bracket type allows up to " + max + " players.");
-    if ($("#tShuffle").checked) for (let i = players.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [players[i], players[j]] = [players[j], players[i]]; }
-    const now = Date.now();
-    const rec = { name, type, participants: players, order: now, createdAt: now };
-    if (type === "se") rec.third = $("#tThird").checked;
-    const res = await db("tournaments", "POST", rec, true);
-    $("#tName").value = ""; $("#tPlayers").value = "";
-    sel = res.name;
-    msg("Bracket created.", true);
-    await reload();
-  } catch (e) { msg(e.message); }
+    if (names.length < MIN(draft.type)) { showTab("players"); throw new Error(draft.type === "de" ? "Double elimination needs at least 3 participants." : "This bracket needs at least 2 participants."); }
+    if (names.length > MAX(draft.type)) { showTab("players"); throw new Error("This bracket type allows up to " + MAX(draft.type) + " participants."); }
+    const rec = { name, type: draft.type, sport: draft.sport.trim(), description: draft.description.trim(), participants: names,
+      third: draft.type === "se" ? draft.third : false, gf: draft.gf, iter: draft.iter, showSeeds: draft.showSeeds,
+      lineStyle: draft.lineStyle, linePattern: draft.linePattern, lineWidth: draft.lineWidth, lineColor: draft.lineColor };
+    $("#saveBtn").disabled = true;
+    if (!draft.id) {
+      const now = Date.now();
+      const res = await db("tournaments", "POST", { ...rec, order: now, createdAt: now }, true);
+      draft.id = res.name; draft.order = now;
+    } else await db(`tournaments/${draft.id}`, "PATCH", rec, true);
+    draft.participants = names; draft.name = name;
+    structDirty = false; $("#unsaved").textContent = "";
+    $("#saveBtn").textContent = "Save Changes";
+    history.replaceState(null, "", "#" + draft.id);
+    await refreshList();
+    setMsg(msg, "Saved.", true);
+    refreshAll();
+  } catch (e) { setMsg(msg, e.message); }
+  $("#saveBtn").disabled = false;
 };
 
 $("#resetBtn").onclick = async () => {
-  const t = selected(); if (!t) return;
-  if (!confirm("Clear every score in \"" + t.name + "\"?")) return;
-  try { await db(`tournaments/${t.id}/results`, "DELETE", undefined, true); await reload(); } catch (e) { msg(e.message); }
+  if (!confirm("Clear every score in \"" + draft.name + "\"?")) return;
+  try { await db(`tournaments/${draft.id}/results`, "DELETE", undefined, true); draft.results = {}; await afterScore(); setMsg($("#saveMsg"), "Scores cleared.", true); }
+  catch (e) { setMsg($("#saveMsg"), e.message); }
 };
 $("#delBtn").onclick = async () => {
-  const t = selected(); if (!t) return;
-  if (!confirm("Permanently delete \"" + t.name + "\"?")) return;
-  try { await db(`tournaments/${t.id}`, "DELETE", undefined, true); sel = null; await reload(); } catch (e) { msg(e.message); }
+  if (!confirm("Permanently delete \"" + draft.name + "\"?")) return;
+  try { await db(`tournaments/${draft.id}`, "DELETE", undefined, true); await refreshList(); showList(); }
+  catch (e) { setMsg($("#saveMsg"), e.message); }
 };
 </script></body></html>

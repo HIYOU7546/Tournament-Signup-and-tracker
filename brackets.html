@@ -55,8 +55,8 @@ let items = [], current = null, lastCustom = "";
 async function loadItems() {
   const [b, t] = await Promise.all([db("brackets"), getTournaments()]);
   items = [
-    ...(b ? Object.entries(b).map(([id, v]) => ({ key: "b-" + id, raw: id, kind: "link", name: v.name, url: v.url, order: v.order || 0 })) : []),
-    ...t.map(x => ({ key: "t-" + x.id, raw: x.id, kind: "custom", name: x.name, t: x, order: x.order }))
+    ...(b ? Object.entries(b).filter(([, v]) => v.hidden !== true).map(([id, v]) => ({ key: "b-" + id, raw: id, kind: "link", name: v.name, url: v.url, order: v.order || 0 })) : []),
+    ...t.filter(x => !x.hidden).map(x => ({ key: "t-" + x.id, raw: x.id, kind: "custom", name: x.name, t: x, order: x.order }))
   ].sort((a, b) => a.order - b.order);
 }
 
@@ -80,7 +80,8 @@ function renderTabs() {
 function drawCustom() {
   const t = current.t;
   $("#ctitle").textContent = t.name;
-  $("#csub").textContent = (TYPE_LABELS[t.type] || t.type) + " · " + t.participants.length + " players";
+  $("#csub").textContent = [t.sport, TYPE_LABELS[t.type] || t.type, t.participants.length + " players"].filter(Boolean).join(" · ") +
+    (t.description ? " — " + t.description : "");
   renderBracket($("#cbody"), t);
   lastCustom = JSON.stringify(t);
 }
@@ -103,9 +104,15 @@ function show(key) {
 (async () => {
   try {
     await loadItems();
-    if (!items.length) { $("#note").textContent = "No brackets have been added yet."; return; }
+    if (!items.length) { $("#note").textContent = "No brackets to show right now."; return; }
     $("#note").textContent = "";
-    show(decodeURIComponent(location.hash.slice(1)));
+    const want = decodeURIComponent(location.hash.slice(1));
+    if (want && items.some(x => x.key === want || x.raw === want)) { show(want); return; }
+    // No link to a specific bracket: use the admin's choice of what to open first.
+    let pref = "first";
+    try { pref = (await db("settings/bracketsDefault")) || "first"; } catch {}
+    const pick = pref === "builtin" ? items.find(x => x.kind === "custom") : pref === "link" ? items.find(x => x.kind === "link") : null;
+    show((pick || items[0]).key);
   } catch (e) { $("#note").textContent = e.message; }
 })();
 
@@ -115,7 +122,7 @@ setInterval(async () => {
   try {
     await loadItems();
     const fresh = items.find(x => x.key === current.key);
-    if (!fresh) { show(items[0] ? items[0].key : ""); return; }
+    if (!fresh) { if (items.length) show(items[0].key); else location.reload(); return; }
     current = fresh;
     if (JSON.stringify(fresh.t) !== lastCustom) drawCustom();
   } catch {}
