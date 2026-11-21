@@ -30,7 +30,7 @@
     <div id="list"></div>
   </div>
 </main>
-<script src="config.js"></script><!--<script src="words.js?v=4"></script>--><script src="app.js?v=4"></script>
+<script src="config.js"></script><script src="Words.js?v=5"></script><script src="app.js?v=5"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
 // Safety net: never leave the page blank if something below fails.
@@ -94,12 +94,12 @@ $("#go").onclick = async () => {
   const players = raw.filter(Boolean);
   const msg = $("#msg"), btn = $("#go");
   // Tells the student WHICH field is the problem. signup() in app.js enforces the filter again.
-  // const bad = typeof containsBlockedWord === "function" ? raw.findIndex(v => v && containsBlockedWord(v)) : -1;
-  // if (bad >= 0) {
-  //   msg.className = "msg err";
-  //   msg.textContent = `Player ${bad + 1}'s name isn't allowed. Please use a school-appropriate name.`;
-  //   return;
-  // }
+  const bad = typeof containsBlockedWord === "function" ? raw.findIndex(v => v && containsBlockedWord(v)) : -1;
+  if (bad >= 0) {
+    msg.className = "msg err";
+    msg.textContent = `Player ${bad + 1}'s name isn't allowed. Please use a school-appropriate name.`;
+    return;
+  }
   const useLogin = requireLogin;
   if (useLogin && !playerSession()) { await refreshGate(); return; }
   btn.disabled = true;
