@@ -36,3 +36,12 @@ input[type=checkbox]:hover{border-color:var(--brand)}
 input[type=checkbox]:checked{background:var(--brand);border-color:var(--brand)}
 input[type=checkbox]:checked::after{content:"";position:absolute;left:6px;top:1px;width:6px;height:12px;border:solid #111;border-width:0 3px 3px 0;transform:rotate(45deg)}
 input[type=checkbox]:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+
+/* Admin nav */
+.adminnav{position:sticky;top:0;z-index:10;background:#000;border:1px solid var(--line);border-bottom:3px solid var(--brand);border-radius:10px;padding:8px;margin-bottom:14px}
+.adminnav a{display:inline-block;color:var(--brand);text-decoration:none;padding:6px 10px;border-radius:8px;font-weight:600;font-size:14px}
+.adminnav a:hover{background:rgba(242,183,5,.18)}
+.an-sec,.an-pages{display:flex;flex-wrap:wrap;gap:2px;align-items:center}
+.an-pages{margin-top:6px;padding-top:6px;border-top:1px solid var(--line)}
+.an-pages button{margin-left:auto}
+h2{scroll-margin-top:110px}

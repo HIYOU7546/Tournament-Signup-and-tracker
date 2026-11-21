@@ -18,7 +18,13 @@
     <div id="loginMsg" class="msg err"></div>
   </div>
   <div id="panel" hidden>
-    <div style="text-align:right"><button class="gray small" id="logout">Log out</button></div>
+    <div class="adminnav" id="adminnav">
+      <div class="an-sec" id="anSec"></div>
+      <div class="an-pages">
+        <a href="edit.html">Sign-up text</a><a href="forms.html">Forms</a><a href="manage.html">Bracket manager</a><a href="brackets.html">Brackets</a><a href="qr.html">QR</a>
+        <button class="gray small" id="logout">Log out</button>
+      </div>
+    </div>
     <div class="card">
       <h2>Tournament mode</h2>
       <label style="display:flex;gap:10px;align-items:center;cursor:pointer">
@@ -49,20 +55,6 @@
       </div>
     </div>
     <div class="card">
-      <h2>Required email</h2>
-      <p class="muted" style="margin-top:0">Which Google accounts can sign in (for open play and for tournament forms that require sign-in).</p>
-      <label style="display:flex;gap:10px;align-items:center;cursor:pointer;margin:8px 0">
-        <input type="checkbox" id="anyDom" style="width:auto;margin:0">
-        <span>Allow any Google account (Gmail and others)</span>
-      </label>
-      <div id="domWrap">
-        <label class="muted" for="domIn" style="font-size:.85rem">Only emails ending in</label>
-        <div style="display:flex;gap:8px;align-items:center"><span style="font-size:1.1rem">@</span><input id="domIn" placeholder="hamiltonschools.us" maxlength="80" autocomplete="off" style="margin:0"></div>
-      </div>
-      <button id="domSave" style="margin-top:10px">Save</button>
-      <div id="domMsg" class="msg"></div>
-    </div>
-    <div class="card">
       <h2>Open play sign-in</h2>
       <label style="display:flex;gap:10px;align-items:center;cursor:pointer">
         <input type="checkbox" id="reqLogin" style="width:auto;margin:0">
@@ -80,6 +72,20 @@
       <h2>Hidden for follow-up</h2>
       <p class="muted">Hidden from the public line but kept here with who signed up, so you can follow up. Clearing the line does not remove these. Click Delete when you're finished.</p>
       <div id="hlist"></div>
+    </div>
+    <div class="card">
+      <h2>Required email</h2>
+      <p class="muted" style="margin-top:0">Which Google accounts can sign in (for open play and for tournament forms that require sign-in).</p>
+      <label style="display:flex;gap:10px;align-items:center;cursor:pointer;margin:8px 0">
+        <input type="checkbox" id="anyDom" style="width:auto;margin:0">
+        <span>Allow any Google account (Gmail and others)</span>
+      </label>
+      <div id="domWrap">
+        <label class="muted" for="domIn" style="font-size:.85rem">Only emails ending in</label>
+        <div style="display:flex;gap:8px;align-items:center"><span style="font-size:1.1rem">@</span><input id="domIn" placeholder="hamiltonschools.us" maxlength="80" autocomplete="off" style="margin:0"></div>
+      </div>
+      <button id="domSave" style="margin-top:10px">Save</button>
+      <div id="domMsg" class="msg"></div>
     </div>
     <div class="card">
       <h2>Built-in tournaments</h2>
@@ -404,4 +410,16 @@ $("#logout").onclick = () => {
 };
 $("#clear").onclick = () => confirm("Remove everyone from the line? Hidden entries are kept.") && guard(() => clearQueue(queue.filter(e => !e.hidden).map(e => e.id)));
 if (sessionStorage.getItem("token")) showPanel();
-</script></body></html>
+</script><script>
+// Build the "jump to" menu from the card headings
+(function(){
+  const box=document.getElementById("anSec");
+  document.querySelectorAll("#panel .card > h2").forEach((h,i)=>{
+    if(!h.id)h.id="sec"+i;
+    const a=document.createElement("a");a.href="#"+h.id;a.textContent=h.textContent;
+    a.onclick=e=>{e.preventDefault();h.scrollIntoView({behavior:"smooth",block:"start"});};
+    box.appendChild(a);
+  });
+})();
+</script>
+</body></html>
