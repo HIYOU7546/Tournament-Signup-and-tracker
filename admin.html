@@ -74,6 +74,11 @@
       <div id="hlist"></div>
     </div>
     <div class="card">
+      <h2>Bans and timeouts</h2>
+      <p class="muted">Ban or time out someone from the Hidden list above. This only works for sign-ups made with a login (Open play sign-in must be on). Timeouts end by themselves.</p>
+      <div id="blist"></div>
+    </div>
+    <div class="card">
       <h2>Required email</h2>
       <p class="muted" style="margin-top:0">Which Google accounts can sign in (for open play and for tournament forms that require sign-in).</p>
       <label style="display:flex;gap:10px;align-items:center;cursor:pointer;margin:8px 0">
@@ -156,7 +161,33 @@ async function load() {
     hide: e => guard(() => db(`queue/${e.id}/hidden`, "PUT", true, true)),
     done: e => guard(() => removeEntry(e.id))
   }, who);
+  try { bans = (await db("bans", "GET", undefined, true)) || {}; } catch { bans = {}; }
   renderHidden(queue.filter(e => e.hidden));
+  renderBans();
+}
+
+let bans = {};
+const PERM = 32503680000000;
+const fmtT = t => new Date(t).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+function renderBans() {
+  const el = $("#blist"); el.replaceChildren();
+  const list = Object.entries(bans).map(([uid, b]) => ({ uid, ...b })).filter(b => b.until > Date.now());
+  if (!list.length) { const p = document.createElement("p"); p.className = "muted"; p.textContent = "No one is banned or timed out."; el.appendChild(p); return; }
+  list.sort((x, y) => y.until - x.until).forEach(b => {
+    const row = document.createElement("div"); row.className = "entry";
+    const mid = document.createElement("div"); mid.style.flex = "1";
+    const t = document.createElement("div"); t.textContent = b.email || b.uid; t.style.fontWeight = "600";
+    const w = document.createElement("div"); w.className = "time";
+    w.textContent = (b.until >= PERM ? "Banned until removed" : "Timeout until " + fmtT(b.until)) + (b.reason ? " · " + b.reason : "");
+    mid.append(t, w);
+    const act = document.createElement("div"); act.className = "actions";
+    const rm = document.createElement("button"); rm.className = "small gray"; rm.textContent = "Remove";
+    rm.onclick = () => guard(() => db("bans/" + b.uid, "DELETE", undefined, true));
+    act.appendChild(rm); row.append(mid, act); el.appendChild(row);
+  });
+}
+async function banUser(uid, email, ms, reason) {
+  await db("bans/" + uid, "PUT", { email: email || "", until: ms === 0 ? PERM : Date.now() + ms, reason: reason || "", at: Date.now() }, true);
 }
 
 function renderHidden(list) {
@@ -174,6 +205,13 @@ function renderHidden(list) {
     mid.append(pl, w);
     const act = document.createElement("div"); act.className = "actions"; act.style.flexWrap = "wrap"; act.style.justifyContent = "flex-end";
     const mk = (label, cls, fn) => { const b = document.createElement("button"); b.className = "small " + cls; b.textContent = label; b.onclick = fn; act.appendChild(b); };
+    if (sg && sg.uid) {
+      const sel = document.createElement("select"); sel.style.cssText = "width:auto;margin:0";
+      [["1 day", 864e5], ["1 week", 6048e5], ["30 days", 2592e6], ["Ban", 0]].forEach(([l, v]) => { const o = document.createElement("option"); o.value = v; o.textContent = l; sel.appendChild(o); });
+      const active = bans[sg.uid] && bans[sg.uid].until > Date.now();
+      if (active) { const tag = document.createElement("span"); tag.className = "time"; tag.textContent = "Already " + (bans[sg.uid].until >= PERM ? "banned" : "timed out"); act.appendChild(tag); }
+      else { act.appendChild(sel); mk("Apply", "bad", () => guard(() => banUser(sg.uid, sg.email, Number(sel.value), (e.players || []).join(", ")))); }
+    }
     mk("Unhide", "gray", () => guard(() => db(`queue/${e.id}/hidden`, "DELETE", undefined, true)));
     mk("Delete", "bad", () => confirm("Permanently delete this entry and its record of who signed up?") && guard(() => removeEntry(e.id)));
     row.append(mid, act); el.appendChild(row);

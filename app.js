@@ -93,6 +93,15 @@ async function signup(players, useLogin = false) {
   if (!useLogin) return db("queue", "POST", entry);
   const sess = playerSession();
   if (!sess) throw new Error("Please sign in again with your " + domainWord() + " account.");
+  // Banned or timed-out accounts can't sign up (the database rules enforce this too).
+  try {
+    const b = await db("bans/" + sess.uid, "GET", undefined, "player");
+    if (b && b.until && Date.now() < b.until) {
+      const perm = b.until > 4e12;
+      throw new Error(perm ? "Your account can't sign up right now. Please talk to a teacher or staff member."
+        : "Your account is on a timeout until " + new Date(b.until).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) + ".");
+    }
+  } catch (e) { if (/timeout|can't sign up/.test(e.message)) throw e; }
   // One atomic write: the public queue entry + a private record of who signed up (admins only).
   const key = "s" + now.toString(36) + Math.random().toString(36).slice(2, 8);
   return db("", "PATCH", {
