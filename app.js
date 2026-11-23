@@ -108,6 +108,9 @@ async function db(path, method = "GET", body, auth = false) {
   if (res.status === 401 && auth && sessionStorage.getItem(TK[kind].refresh)) res = await send(true);
   if (!res.ok) {
     if (res.status === 401) {
+      if (auth === "player" && method !== "GET") {
+        throw new Error("That sign-up wasn't accepted. The line may be closed, you may be on a timeout, or you signed up a moment ago. Please try again shortly.");
+      }
       if (auth === "player") {
         playerLogout();
         throw new Error("Your sign-in expired or isn't allowed. Please sign in again with your " + domainWord() + " account.");
@@ -141,11 +144,16 @@ async function signup(players, useLogin = false) {
     throw new Error("One of the names isn't allowed. Please use school-appropriate names.");
   }
   const now = Date.now();
-  const entry = { players, order: now, signedUpAt: now };
+  const TS = { ".sv": "timestamp" }; // the database stamps the real time, so nobody can fake their place in line
+  const entry = { players, order: TS, signedUpAt: TS };
   if (!useLogin) return db("queue", "POST", entry);
   await freshToken("player");
   const sess = playerSession();
   if (!sess) throw new Error("Please sign in again with your " + domainWord() + " account.");
+  try {
+    const last = await db("lastSignup/" + sess.uid, "GET", undefined, "player");
+    if (last && Date.now() - last < 30000) throw new Error("Please wait a few seconds before signing up again.");
+  } catch (e) { if (/wait a few/.test(e.message)) throw e; }
   // Banned or timed-out accounts can't sign up (the database rules enforce this too).
   try {
     const b = await db("bans/" + sess.uid, "GET", undefined, "player");
@@ -159,7 +167,8 @@ async function signup(players, useLogin = false) {
   const key = "s" + now.toString(36) + Math.random().toString(36).slice(2, 8);
   return db("", "PATCH", {
     [`queue/${key}`]: entry,
-    [`signups/${key}`]: { email: sess.email, uid: sess.uid, at: now }
+    [`signups/${key}`]: { email: sess.email, uid: sess.uid, at: TS },
+    [`lastSignup/${sess.uid}`]: TS
   }, "player");
 }
 
