@@ -115,7 +115,11 @@ async function db(path, method = "GET", body, auth = false) {
         playerLogout();
         throw new Error("Your sign-in expired or isn't allowed. Please sign in again with your " + domainWord() + " account.");
       }
-      if (auth) throw new Error("Permission denied. Either your login expired (log out and back in) or the admin email in the database rules doesn't match yours.");
+      if (auth) {
+        // An old login with no way to renew: drop it so the admin page goes back to the login screen.
+        if (!sessionStorage.getItem("rtoken")) ["token", "texp", "uid"].forEach(k => sessionStorage.removeItem(k));
+      }
+      if (auth) throw new Error("Permission denied. Your login may have expired (please log in again), or this account isn't in the admins list.");
       throw new Error("Permission denied by the database rules.");
     }
     throw new Error("Request failed (" + res.status + "). Check config.js and the database rules.");
