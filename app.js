@@ -55,6 +55,9 @@ const TK = {
   admin:  { token: "token",  refresh: "rtoken",  exp: "texp" },
   player: { token: "ptoken", refresh: "prtoken", exp: "pexp" }
 };
+// A token is swapped for a new one every 4 minutes. The database rules also refuse any token older than 10 minutes,
+// so a copied token stops working shortly after (instead of lasting the full hour).
+const TOKEN_LIFE = 4 * 60 * 1000;
 const _refreshing = {};
 function refreshToken(kind) {
   const k = TK[kind];
@@ -72,7 +75,7 @@ function refreshToken(kind) {
       const j = await res.json();
       sessionStorage.setItem(k.token, j.id_token);
       if (j.refresh_token) sessionStorage.setItem(k.refresh, j.refresh_token);
-      sessionStorage.setItem(k.exp, String(Date.now() + Number(j.expires_in || 3600) * 1000 - 120000));
+      sessionStorage.setItem(k.exp, String(Date.now() + TOKEN_LIFE));
       return j.id_token;
     } catch {
       [k.token, k.refresh, k.exp].forEach(x => sessionStorage.removeItem(x));
@@ -226,7 +229,7 @@ async function googleSignIn(credential) {
   if (j.refreshToken) sessionStorage.setItem("prtoken", j.refreshToken);
   sessionStorage.setItem("pemail", email);
   sessionStorage.setItem("puid", j.localId);
-  sessionStorage.setItem("pexp", String(Date.now() + Number(j.expiresIn || 3600) * 1000 - 60000));
+  sessionStorage.setItem("pexp", String(Date.now() + TOKEN_LIFE));
 }
 
 async function adminLogin(email, password) {
@@ -234,12 +237,24 @@ async function adminLogin(email, password) {
     method: "POST",
     body: JSON.stringify({ email, password, returnSecureToken: true })
   });
-  if (!res.ok) throw new Error("Wrong email or password.");
   const j = await res.json();
+  if (!res.ok) {
+    const code = ((j.error || {}).message || "").split(" ")[0];
+    const why = {
+      INVALID_LOGIN_CREDENTIALS: "Wrong email or password.",
+      INVALID_PASSWORD: "Wrong email or password.",
+      EMAIL_NOT_FOUND: "No login exists for that email. Add the user in Firebase → Authentication → Users first.",
+      USER_DISABLED: "That account is disabled in Firebase.",
+      OPERATION_NOT_ALLOWED: "Email/password sign-in is turned off in Firebase → Authentication → Sign-in method.",
+      TOO_MANY_ATTEMPTS_TRY_LATER: "Too many tries. Wait a few minutes or reset the password.",
+      INVALID_EMAIL: "That email address isn't valid."
+    };
+    throw new Error((why[code] || "Login failed.") + (code ? " (" + code + ")" : ""));
+  }
   sessionStorage.setItem("token", j.idToken);
   sessionStorage.setItem("uid", j.localId);
   if (j.refreshToken) sessionStorage.setItem("rtoken", j.refreshToken);
-  sessionStorage.setItem("texp", String(Date.now() + Number(j.expiresIn || 3600) * 1000 - 120000));
+  sessionStorage.setItem("texp", String(Date.now() + TOKEN_LIFE));
 }
 
 // Emails a password-reset link (Firebase sends it; the person picks their own password).
