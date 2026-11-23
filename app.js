@@ -159,8 +159,8 @@ async function signup(players, useLogin = false) {
   if (!sess) throw new Error("Please sign in again with your " + domainWord() + " account.");
   try {
     const last = await db("lastSignup/" + sess.uid, "GET", undefined, "player");
-    if (last && Date.now() - last < 30000) throw new Error("Please wait a few seconds before signing up again.");
-  } catch (e) { if (/wait a few/.test(e.message)) throw e; }
+    if (last && Date.now() - last < 60000) throw new Error("Please wait a minute before signing up again.");
+  } catch (e) { if (/wait a minute/.test(e.message)) throw e; }
   // Banned or timed-out accounts can't sign up (the database rules enforce this too).
   try {
     const b = await db("bans/" + sess.uid, "GET", undefined, "player");
