@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin Chat</title>
+<link rel="stylesheet" href="style.css">
+<link rel="icon" type="image/svg+xml" href="images/favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32.png">
+<link rel="icon" href="images/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="images/apple-touch-icon.png">
+<style>
+#msgs{height:55vh;min-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 2px}
+.m{max-width:80%;padding:8px 12px;border-radius:12px;background:#262626;border:1px solid var(--line);align-self:flex-start;word-wrap:break-word;overflow-wrap:anywhere}
+.m.me{align-self:flex-end;background:rgba(242,183,5,.16);border-color:var(--brand)}
+.m .who{font-size:12px;color:var(--muted);margin-bottom:2px}
+.m .who button{background:none;border:0;color:var(--muted);cursor:pointer;padding:0 0 0 8px;font-size:12px;width:auto}
+.m .txt{white-space:pre-wrap}
+#send{display:flex;gap:8px;margin-top:10px}
+#send input{flex:1;margin:0}
+</style>
+</head><body>
+<main>
+  <p style="margin-bottom:0"><a href="admin.html" style="color:var(--brand)">&larr; Back to Admin</a></p>
+  <h1>Admin Chat</h1>
+  <div class="card" id="needLogin" hidden>
+    <h2>Admin login needed</h2>
+    <p>Please <a href="admin.html" style="color:var(--brand)">log in on the Admin page</a> first, then come back here.</p>
+  </div>
+  <div class="card" id="chat" hidden>
+    <p class="muted" style="margin-top:0">Only admins can see this. Shows the last 100 messages.</p>
+    <div id="msgs"></div>
+    <form id="send">
+      <input id="txt" maxlength="500" placeholder="Type a message" autocomplete="off">
+      <button id="go" style="flex:none">Send</button>
+    </form>
+    <div id="err" class="msg err"></div>
+  </div>
+</main>
+<script src="config.js"></script>
+<script>
+const DB = CONFIG.databaseUrl.replace(/\/$/, "");
+const $ = s => document.querySelector(s);
+const tok = () => sessionStorage.getItem("token");
+function me() {
+  try {
+    const p = JSON.parse(atob(tok().split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return { uid: p.user_id || p.sub, name: (p.email || "admin").split("@")[0] };
+  } catch { return { uid: "", name: "admin" }; }
+}
+let user, last = "", unread = 0, first = true;
+async function req(path, method, body) {
+  const res = await fetch(`${DB}/${path}${path.includes("?") ? "&" : "?"}auth=${encodeURIComponent(tok())}`, { method, body: body === undefined ? undefined : JSON.stringify(body) });
+  if (!res.ok) throw new Error(res.status === 401 || res.status === 403 ? "Not allowed. Make sure you're logged in as an admin (and the new database rules are published)." : "Something went wrong (" + res.status + ").");
+  return res.json();
+}
+async function load() {
+  const d = (await req('chat.json?orderBy="$key"&limitToLast=100', "GET")) || {};
+  const list = Object.entries(d).sort((a, b) => a[0] < b[0] ? -1 : 1);
+  const sig = list.map(x => x[0]).join();
+  if (sig === last) return;
+  const box = $("#msgs"), atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+  const prev = last ? last.split(",").length : 0;
+  last = sig;
+  box.replaceChildren();
+  list.forEach(([id, m]) => {
+    const div = document.createElement("div"); div.className = "m" + (m.uid === user.uid ? " me" : "");
+    const w = document.createElement("div"); w.className = "who";
+    w.textContent = (m.name || "admin") + " · " + new Date(m.at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    const x = document.createElement("button"); x.textContent = "delete"; x.onclick = async () => { try { await req(`chat/${id}.json`, "DELETE"); await load(); } catch (e) { $("#err").textContent = e.message; } };
+    w.appendChild(x);
+    const t = document.createElement("div"); t.className = "txt"; t.textContent = m.text;
+    div.append(w, t); box.appendChild(div);
+  });
+  if (atBottom || first) box.scrollTop = box.scrollHeight;
+  if (!first && !document.hasFocus() && list.length > prev) { unread += list.length - prev; document.title = `(${unread}) Admin Chat`; }
+  first = false;
+}
+$("#send").onsubmit = async e => {
+  e.preventDefault();
+  const text = $("#txt").value.trim(); if (!text) return;
+  $("#go").disabled = true; $("#err").textContent = "";
+  try { await req("chat.json", "POST", { text, name: user.name, uid: user.uid, at: Date.now() }); $("#txt").value = ""; await load(); }
+  catch (er) { $("#err").textContent = er.message; }
+  $("#go").disabled = false; $("#txt").focus();
+};
+window.onfocus = () => { unread = 0; document.title = "Admin Chat"; };
+if (!tok()) $("#needLogin").hidden = false;
+else {
+  user = me(); $("#chat").hidden = false;
+  const tick = () => load().catch(e => { $("#err").textContent = e.message; });
+  tick(); setInterval(tick, 3000);
+}
+</script>
+</body></html>
