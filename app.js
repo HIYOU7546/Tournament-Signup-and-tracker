@@ -47,13 +47,65 @@ function nav(active) {
 }
 
 // ---- Firebase REST helpers ----
+// ---- Login tokens ----
+// Firebase login tokens only last 1 hour by design. Instead of keeping one forever, we swap the
+// refresh token for a brand-new login token shortly before it runs out (and again if the
+// database ever says "expired"), so the token in use is always a recent one.
+const TK = {
+  admin:  { token: "token",  refresh: "rtoken",  exp: "texp" },
+  player: { token: "ptoken", refresh: "prtoken", exp: "pexp" }
+};
+const _refreshing = {};
+function refreshToken(kind) {
+  const k = TK[kind];
+  if (_refreshing[kind]) return _refreshing[kind];
+  const rt = sessionStorage.getItem(k.refresh);
+  if (!rt) return Promise.resolve(null);
+  _refreshing[kind] = (async () => {
+    try {
+      const res = await fetch(`https://securetoken.googleapis.com/v1/token?key=${CONFIG.apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "grant_type=refresh_token&refresh_token=" + encodeURIComponent(rt)
+      });
+      if (!res.ok) throw new Error("refresh failed");
+      const j = await res.json();
+      sessionStorage.setItem(k.token, j.id_token);
+      if (j.refresh_token) sessionStorage.setItem(k.refresh, j.refresh_token);
+      sessionStorage.setItem(k.exp, String(Date.now() + Number(j.expires_in || 3600) * 1000 - 120000));
+      return j.id_token;
+    } catch {
+      [k.token, k.refresh, k.exp].forEach(x => sessionStorage.removeItem(x));
+      if (kind === "admin") sessionStorage.removeItem("uid"); else ["pemail", "puid"].forEach(x => sessionStorage.removeItem(x));
+      return null;
+    } finally { delete _refreshing[kind]; }
+  })();
+  return _refreshing[kind];
+}
+// Returns a login token that is valid right now (refreshing it first if it's about to expire).
+async function freshToken(kind, force = false) {
+  const k = TK[kind === "player" ? "player" : "admin"];
+  const t = sessionStorage.getItem(k.token);
+  if (!t) return null;
+  const exp = Number(sessionStorage.getItem(k.exp)) || 0;
+  if (!force && exp && Date.now() < exp) return t;
+  if (!sessionStorage.getItem(k.refresh)) return t; // old login with no refresh token: use as is
+  return refreshToken(kind === "player" ? "player" : "admin");
+}
+
 async function db(path, method = "GET", body, auth = false) {
-  let url = `${DB}/${path}.json`;
-  if (auth) {
-    const t = sessionStorage.getItem(auth === "player" ? "ptoken" : "token");
-    if (t) url += `?auth=${encodeURIComponent(t)}`;
-  }
-  const res = await fetch(url, { method, body: body === undefined ? undefined : JSON.stringify(body) });
+  const kind = auth === "player" ? "player" : "admin";
+  const send = async force => {
+    let url = `${DB}/${path}.json`;
+    if (auth) {
+      const t = await freshToken(kind, force);
+      if (t) url += `?auth=${encodeURIComponent(t)}`;
+    }
+    return fetch(url, { method, body: body === undefined ? undefined : JSON.stringify(body) });
+  };
+  let res = await send(false);
+  // Expired or rejected login token: get a new one and try once more.
+  if (res.status === 401 && auth && sessionStorage.getItem(TK[kind].refresh)) res = await send(true);
   if (!res.ok) {
     if (res.status === 401) {
       if (auth === "player") {
@@ -91,6 +143,7 @@ async function signup(players, useLogin = false) {
   const now = Date.now();
   const entry = { players, order: now, signedUpAt: now };
   if (!useLogin) return db("queue", "POST", entry);
+  await freshToken("player");
   const sess = playerSession();
   if (!sess) throw new Error("Please sign in again with your " + domainWord() + " account.");
   // Banned or timed-out accounts can't sign up (the database rules enforce this too).
@@ -127,11 +180,12 @@ function playerSession() {
   const t = sessionStorage.getItem("ptoken");
   const uid = sessionStorage.getItem("puid");
   const exp = Number(sessionStorage.getItem("pexp")) || 0;
-  if (!t || !uid || Date.now() > exp) return null;
+  // Still signed in if the token is fresh, or if we hold a refresh token that can renew it.
+  if (!t || !uid || (Date.now() > exp && !sessionStorage.getItem("prtoken"))) return null;
   return { token: t, uid, email: sessionStorage.getItem("pemail") || "" };
 }
 function playerLogout() {
-  ["ptoken", "pemail", "puid", "pexp"].forEach(k => sessionStorage.removeItem(k));
+  ["ptoken", "prtoken", "pemail", "puid", "pexp"].forEach(k => sessionStorage.removeItem(k));
 }
 // Exchanges the Google ID token (from the Google button) for a Firebase login.
 async function googleSignIn(credential) {
@@ -156,6 +210,7 @@ async function googleSignIn(credential) {
     throw new Error("Please sign in with your " + domainWord() + " account.");
   }
   sessionStorage.setItem("ptoken", j.idToken);
+  if (j.refreshToken) sessionStorage.setItem("prtoken", j.refreshToken);
   sessionStorage.setItem("pemail", email);
   sessionStorage.setItem("puid", j.localId);
   sessionStorage.setItem("pexp", String(Date.now() + Number(j.expiresIn || 3600) * 1000 - 60000));
@@ -170,6 +225,8 @@ async function adminLogin(email, password) {
   const j = await res.json();
   sessionStorage.setItem("token", j.idToken);
   sessionStorage.setItem("uid", j.localId);
+  if (j.refreshToken) sessionStorage.setItem("rtoken", j.refreshToken);
+  sessionStorage.setItem("texp", String(Date.now() + Number(j.expiresIn || 3600) * 1000 - 120000));
 }
 
 // Emails a password-reset link (Firebase sends it; the person picks their own password).

@@ -35,10 +35,8 @@
     <div id="err" class="msg err"></div>
   </div>
 </main>
-<script src="config.js"></script>
+<script src="config.js"></script><script src="app.js?v=7"></script>
 <script>
-const DB = CONFIG.databaseUrl.replace(/\/$/, "");
-const $ = s => document.querySelector(s);
 const tok = () => sessionStorage.getItem("token");
 function me() {
   try {
@@ -48,7 +46,9 @@ function me() {
 }
 let user, last = "", unread = 0, first = true;
 async function req(path, method, body) {
-  const res = await fetch(`${DB}/${path}${path.includes("?") ? "&" : "?"}auth=${encodeURIComponent(tok())}`, { method, body: body === undefined ? undefined : JSON.stringify(body) });
+  const go = async force => fetch(`${DB}/${path}${path.includes("?") ? "&" : "?"}auth=${encodeURIComponent(await freshToken("admin", force))}`, { method, body: body === undefined ? undefined : JSON.stringify(body) });
+  let res = await go(false);
+  if (res.status === 401 && sessionStorage.getItem("rtoken")) res = await go(true);
   if (!res.ok) throw new Error(res.status === 401 || res.status === 403 ? "Not allowed. Make sure you're logged in as an admin (and the new database rules are published)." : "Something went wrong (" + res.status + ").");
   return res.json();
 }

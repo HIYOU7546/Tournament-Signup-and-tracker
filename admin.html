@@ -135,7 +135,7 @@
     </div>
   </div>
 </main>
-<script src="config.js"></script><script src="app.js"></script>
+<script src="config.js"></script><script src="app.js?v=7"></script>
 <script>
 nav("admin.html");
 let queue = [], who = {}, brackets = [], timer;
@@ -442,7 +442,7 @@ $("#loginBtn").onclick = async () => {
   catch (e) { $("#loginMsg").textContent = e.message; }
 };
 $("#logout").onclick = () => {
-  sessionStorage.removeItem("token"); sessionStorage.removeItem("uid");
+  ["token", "rtoken", "texp", "uid"].forEach(k => sessionStorage.removeItem(k));
   $("#pw").value = ""; $("#loginMsg").textContent = ""; qmsg(); bmsg();
   showLogin();
 };

@@ -82,11 +82,33 @@
           <div class="pbtns">
             <button class="small" id="addP">+ Add Participant</button>
             <button class="small gray" id="bulkBtn">+ Bulk Add Participants</button>
+            <button class="small gray" id="csvBtn">Import names from CSV</button>
             <button class="small gray" id="shuffleBtn">Randomize seeding</button>
           </div>
           <div id="bulk" hidden style="margin-top:10px">
             <textarea id="bulkText" placeholder="One name per line"></textarea>
             <button class="small" id="bulkAdd">Add these names</button>
+          </div>
+          <div id="csvBox" hidden class="card" style="margin-top:10px;background:#141414">
+            <h3 style="margin-top:0">Import names from CSV</h3>
+            <p class="muted" style="margin-top:0">Use the CSV you downloaded from a sign-up form (or any CSV with a header row).</p>
+            <input type="file" id="csvFile" accept=".csv,text/csv">
+            <div id="csvOpts" hidden>
+              <div class="row" style="margin-top:10px">
+                <label>Name column<select id="cName"></select></label>
+                <label>Lunch column<select id="cLunch"></select></label>
+                <label>Priority column<select id="cPri"></select></label>
+              </div>
+              <label style="display:block;margin-top:10px">Only import this lunch
+                <select id="lunchPick"><option value="">Everyone (A and B)</option><option value="A">A Lunch only</option><option value="B">B Lunch only</option></select>
+              </label>
+              <label style="display:block;margin-top:10px">Extra priority players (one name per line, optional)
+                <textarea id="priNames" placeholder="Names that should get a *"></textarea>
+              </label>
+              <label style="display:flex;gap:8px;align-items:center;margin-top:10px;cursor:pointer"><input type="checkbox" id="priFirst" checked><span>Put priority players first in the seeding</span></label>
+              <div class="muted" id="csvInfo" style="margin-top:8px"></div>
+              <button class="small" id="csvAdd" style="margin-top:8px">Add these names</button>
+            </div>
           </div>
           <div id="pMsg" class="msg err"></div>
           <p class="lock" id="lockNote" hidden>Scores have been entered, so participants can't be changed. Use Reset Bracket on the Information tab to make changes.</p>
@@ -166,7 +188,7 @@
     </div>
   </div>
 </main>
-<script src="config.js"></script><script src="app.js"></script>
+<script src="config.js"></script><script src="app.js?v=7"></script>
 <script src="bracket.js"></script><script src="bracketView.js"></script>
 <script>
 nav("admin.html");
@@ -318,9 +340,79 @@ $("#bulkAdd").onclick = () => {
   $("#bulkText").value = ""; $("#bulk").hidden = true; renderPlayers(); changed(true);
 };
 $("#shuffleBtn").onclick = () => {
-  const a = draft.participants.filter(s => s.trim());
-  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
-  draft.participants = a; renderPlayers(); changed(true);
+  const all = draft.participants.filter(s => s.trim());
+  const sh = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  // Priority (*) players stay at the top seeds; everyone else is shuffled.
+  draft.participants = sh(all.filter(n => /\*\s*$/.test(n))).concat(sh(all.filter(n => !/\*\s*$/.test(n))));
+  renderPlayers(); changed(true);
+};
+
+
+// ---------- CSV import ----------
+function parseCSV(text) {
+  const rows = []; let row = [], cur = "", q = false;
+  text = text.replace(/^\uFEFF/, "");
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += c; }
+    else if (c === '"') q = true;
+    else if (c === ",") { row.push(cur); cur = ""; }
+    else if (c === "\n" || c === "\r") { if (c === "\r" && text[i + 1] === "\n") i++; row.push(cur); cur = ""; if (row.some(x => x.trim())) rows.push(row); row = []; }
+    else cur += c;
+  }
+  row.push(cur); if (row.some(x => x.trim())) rows.push(row);
+  return rows;
+}
+let csv = null;
+const lunchOf = v => { v = String(v || "").trim(); return /^a\b/i.test(v) ? "A" : /^b\b/i.test(v) ? "B" : /\ba[\s-]*lunch|lunch[\s-]*a\b/i.test(v) ? "A" : /\bb[\s-]*lunch|lunch[\s-]*b\b/i.test(v) ? "B" : ""; };
+const isYes = v => /^(y|yes|true|1|x|\*|priority)$/i.test(String(v || "").trim());
+$("#csvBtn").onclick = () => { $("#csvBox").hidden = !$("#csvBox").hidden; };
+$("#csvFile").onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  const rows = parseCSV(await f.text());
+  if (rows.length < 2) { setMsg($("#pMsg"), "That CSV has no rows."); return; }
+  csv = { head: rows[0].map(h => h.trim()), rows: rows.slice(1) };
+  const fill = (sel, none) => { sel.replaceChildren(); if (none) { const o = document.createElement("option"); o.value = "-1"; o.textContent = none; sel.appendChild(o); }
+    csv.head.forEach((h, i) => { const o = document.createElement("option"); o.value = i; o.textContent = h || "(column " + (i + 1) + ")"; sel.appendChild(o); }); };
+  fill($("#cName")); fill($("#cLunch"), "(none)"); fill($("#cPri"), "(none)");
+  const find = re => csv.head.findIndex(h => re.test(h));
+  const n = find(/name|player/i); $("#cName").value = n >= 0 ? n : 0;
+  const l = find(/lunch/i); $("#cLunch").value = l;
+  const p = find(/priority/i); $("#cPri").value = p;
+  setMsg($("#pMsg"), ""); $("#csvOpts").hidden = false; csvInfo();
+};
+function csvPick() {
+  const ni = +$("#cName").value, li = +$("#cLunch").value, pi = +$("#cPri").value, want = $("#lunchPick").value;
+  const extra = new Set($("#priNames").value.split("\n").map(x => x.trim().toLowerCase()).filter(Boolean));
+  const seen = new Set(draft.participants.map(x => x.replace(/\*\s*$/, "").trim().toLowerCase()));
+  const out = []; let skipped = 0;
+  csv.rows.forEach(r => {
+    const name = (r[ni] || "").trim(); if (!name) return;
+    if (want && li >= 0 && lunchOf(r[li]) !== want) return;
+    const key = name.toLowerCase();
+    if (seen.has(key)) { skipped++; return; }
+    seen.add(key);
+    out.push({ name, pri: (pi >= 0 && isYes(r[pi])) || extra.has(key) });
+  });
+  return { out, skipped, noLunch: want && li < 0 };
+}
+function csvInfo() {
+  if (!csv) return;
+  const { out, skipped, noLunch } = csvPick();
+  $("#csvInfo").textContent = (noLunch ? "Pick a Lunch column to filter by lunch. " : "") + out.length + " name" + (out.length === 1 ? "" : "s") + " will be added (" + out.filter(x => x.pri).length + " priority)" + (skipped ? ", " + skipped + " duplicate" + (skipped === 1 ? "" : "s") + " skipped" : "") + ".";
+}
+["#cName", "#cLunch", "#cPri", "#lunchPick", "#priNames"].forEach(id => { $(id).oninput = csvInfo; $(id).onchange = csvInfo; });
+$("#csvAdd").onclick = () => {
+  const { out, noLunch } = csvPick();
+  if (noLunch) { setMsg($("#pMsg"), "Choose which column holds the lunch (A or B) first."); return; }
+  let list = out.map(x => x.pri ? x.name + " *" : x.name);
+  if ($("#priFirst").checked) list = out.filter(x => x.pri).map(x => x.name + " *").concat(out.filter(x => !x.pri).map(x => x.name));
+  const keep = draft.participants.filter(s => s.trim());
+  const room = Math.max(MAX(draft.type) - keep.length, 0);
+  draft.participants = keep.concat(list.slice(0, room));
+  setMsg($("#pMsg"), list.length > room ? `Only ${room} fit. The rest were left out.` : "");
+  renderPlayers(); changed(true);
+  $("#csvBox").hidden = true; $("#csvOpts").hidden = true; $("#csvFile").value = ""; csv = null;
 };
 
 // ---------- preview + status ----------
